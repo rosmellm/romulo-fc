@@ -120,10 +120,11 @@ const db      = getFirestore(fbApp);
 const messaging = getMessaging(fbApp);
 
 // VAPID key — se obtiene en Firebase Console → Project Settings → Cloud Messaging → Web Push certificates
-const VAPID_KEY = "REEMPLAZA_CON_TU_VAPID_KEY";
+const VAPID_KEY = "BEbMBO0z6wJn_Go07XmMsZuujs7Y0n3cm-WmAPCkXubfzs3chUBJpwLCDw_fLY89MJ5Zzauq7-3ZS7zswC4z08s";
 
 // VAPID key — la obtienes en Firebase Console → Project Settings → Cloud Messaging → Web Push certificates
-const VAPID_KEY = "REEMPLAZA_CON_TU_VAPID_KEY";
+const VAPID_KEY = "BEbMBO0z6wJn_Go07XmMsZuujs7Y0n3cm-WmAPCkXubfzs3chUBJpwLCDw_fLY89MJ5Zzauq7-3ZS7zswC4z08s
+";
 
 let messaging = null;
 try { messaging = getMessaging(fbApp); } catch(e) { /* no soportado en algunos browsers */ }
