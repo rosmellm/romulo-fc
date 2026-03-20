@@ -467,6 +467,7 @@ body{background:#04060c;color:#afc4d8;font-family:'DM Sans',sans-serif;min-heigh
 .mcell{background:#090d1a;border:1px solid rgba(33,150,243,.08);border-radius:5px;padding:4px 2px;text-align:center;cursor:pointer;}
 .mcell.mp{background:rgba(21,101,192,.08);border-color:rgba(33,150,243,.18);}
 .mcell.mup{background:rgba(229,57,53,.05);border-color:rgba(229,57,53,.12);}
+.mcell.mex{background:rgba(212,184,74,.07);border-color:rgba(212,184,74,.25);}
 .mclbl{font-size:7px;color:#3a5068;font-family:'DM Sans',sans-serif;}
 .mcico{font-size:10px;margin-top:1px;}
 .inp{width:100%;background:#090d1a;border:1px solid rgba(33,150,243,.1);border-radius:8px;padding:7px 10px;color:#afc4d8;font-family:'DM Sans',sans-serif;font-size:11px;outline:none;}
@@ -2519,7 +2520,9 @@ export default function App() {
   const [trCat,        setTrCat]        = useState("Sub-15");
   const [trEquips,     setTrEquips]     = useState(["",""]);
   const [trErr,        setTrErr]        = useState("");
-  const [calVista,     setCalVista]     = useState("lista"); // "lista" | "semanal"
+  const [calVista,     setCalVista]     = useState("lista");
+  const [exentoModal, setExentoModal] = useState(null); // { pid, mes }
+  const [exentoMotivo,setExentoMotivo]= useState("");
   const [hp, setHp] = useState({ home:"Rómulo FC", away:"", date:"", cat:"Sub-15", field:"", scoreH:"", scoreA:"", fase:"Normal", champId:"" });
   const [hpStats, setHpStats] = useState({}); // { playerId: { goles, asistencias, amarilla, roja } }
   const [hpStep, setHpStep] = useState(1); // 1=datos, 2=jugadores
@@ -3170,7 +3173,7 @@ export default function App() {
     if (listType === "pendientes") {
       msg = "❌ RÓMULO F.C — Pagos Pendientes\n" + new Date().toLocaleDateString("es") + "\n\n";
       pl.forEach(p => {
-        const pend = ACTIVE_MONTHS.filter(m => !(pay[p.id] && pay[p.id].months[m] && pay[p.id].months[m].paid));
+        const pend = ACTIVE_MONTHS.filter(m => !pay[p.id]?.months[m]?.paid && !pay[p.id]?.months[m]?.exento);
         if (pend.length) msg += "❌ " + p.nombre + " " + p.apellido + " (" + p.cat + "): " + pend.join(", ") + "\n";
       });
     } else if (listType === "pagados") {
@@ -3183,7 +3186,7 @@ export default function App() {
     } else {
       msg = "📋 RÓMULO F.C — Estado Completo\n" + new Date().toLocaleDateString("es") + "\n\n";
       pl.forEach(p => {
-        const pend = ACTIVE_MONTHS.filter(m => !(pay[p.id] && pay[p.id].months[m] && pay[p.id].months[m].paid));
+        const pend = ACTIVE_MONTHS.filter(m => !pay[p.id]?.months[m]?.paid && !pay[p.id]?.months[m]?.exento);
         msg += (pend.length ? "❌ " : "✅ ") + p.nombre + " " + p.apellido + " (" + p.cat + ")" +
                (pend.length ? ": " + pend.join(", ") : ": Al día") + "\n";
       });
@@ -3657,7 +3660,7 @@ export default function App() {
 
     // Pagos del jugador
     const spPay     = sp && pay[sp.id] ? pay[sp.id] : null;
-    const pendMeses = spPay ? ACTIVE_MONTHS.filter(m => !spPay.months[m]?.paid) : [];
+    const pendMeses = spPay ? ACTIVE_MONTHS.filter(m => !spPay.months[m]?.paid && !spPay.months[m]?.exento) : [];
     const pagMeses  = spPay ? ACTIVE_MONTHS.filter(m => spPay.months[m]?.paid) : [];
 
     // Sanciones
@@ -3811,8 +3814,8 @@ export default function App() {
                   <div style={{ fontSize:7.5, color:"#4e6a88" }}>Asistencia</div>
                 </div>
                 <div style={{ textAlign:"center", background:"rgba(21,101,192,.1)", borderRadius:8, padding:"6px 14px" }}>
-                  <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:20, color: spPay && ACTIVE_MONTHS.filter(m=>!spPay.months[m]?.paid).length===0 ? "#43A047" : "#E53935" }}>
-                    {spPay ? ACTIVE_MONTHS.filter(m=>spPay.months[m]?.paid).length : 0}/{ACTIVE_MONTHS.length}
+                  <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:20, color: spPay && ACTIVE_MONTHS.filter(m=>!spPay.months[m]?.paid&&!spPay.months[m]?.exento).length===0 ? "#43A047" : "#E53935" }}>
+                    {spPay ? ACTIVE_MONTHS.filter(m=>spPay.months[m]?.paid||spPay.months[m]?.exento).length : 0}/{ACTIVE_MONTHS.length}
                   </div>
                   <div style={{ fontSize:7.5, color:"#4e6a88" }}>Meses pagos</div>
                 </div>
@@ -4528,11 +4531,11 @@ export default function App() {
       const conNotas   = myPlayers.filter(p => p.notas && p.notas.trim()).length;
       // Deudores: 2+ meses sin pagar
       const deudores   = myPlayers.filter(p => {
-        const mesesPend = ACTIVE_MONTHS.filter(m => !pay[p.id]?.months?.[m]?.paid);
+        const mesesPend = ACTIVE_MONTHS.filter(m => !pay[p.id]?.months?.[m]?.paid && !pay[p.id]?.months?.[m]?.exento);
         return mesesPend.length >= 2;
       }).sort((a,b) => {
-        const pa = ACTIVE_MONTHS.filter(m => !pay[a.id]?.months?.[m]?.paid).length;
-        const pb = ACTIVE_MONTHS.filter(m => !pay[b.id]?.months?.[m]?.paid).length;
+        const pa = ACTIVE_MONTHS.filter(m => !pay[a.id]?.months?.[m]?.paid && !pay[a.id]?.months?.[m]?.exento).length;
+        const pb = ACTIVE_MONTHS.filter(m => !pay[b.id]?.months?.[m]?.paid && !pay[b.id]?.months?.[m]?.exento).length;
         return pb - pa;
       });
 
@@ -4715,7 +4718,7 @@ export default function App() {
                 Jugadores con 2 o más meses sin pagar. Toca 📲 para enviar recordatorio.
               </p>
               {deudores.slice(0,5).map(p => {
-                const mesesPend = ACTIVE_MONTHS.filter(m => !pay[p.id]?.months?.[m]?.paid);
+                const mesesPend = ACTIVE_MONTHS.filter(m => !pay[p.id]?.months?.[m]?.paid && !pay[p.id]?.months?.[m]?.exento);
                 return (
                   <div key={p.id} className="pr">
                     <Avatar p={p} size={30} />
@@ -5812,7 +5815,7 @@ export default function App() {
 
           {payTab === "mensualidades" && filtP.map(p => {
             const paid = ACTIVE_MONTHS.filter(m => pay[p.id] && pay[p.id].months[m] && pay[p.id].months[m].paid).length;
-            const pend = ACTIVE_MONTHS.filter(m => !(pay[p.id] && pay[p.id].months[m] && pay[p.id].months[m].paid));
+            const pend = ACTIVE_MONTHS.filter(m => !pay[p.id]?.months[m]?.paid && !pay[p.id]?.months[m]?.exento);
             return (
               <div key={p.id} className="card" style={{ marginBottom:8 }}>
                 <div className="ch" style={{ marginBottom:6 }}>
@@ -5833,18 +5836,49 @@ export default function App() {
                   </div>
                 </div>
                 <div className="mgrid">
-                  {ACTIVE_MONTHS.map(m => {
-                    const ok  = pay[p.id] && pay[p.id].months[m] && pay[p.id].months[m].paid;
-                    const ref = pay[p.id]?.months[m]?.ref;
+                  {MONTHS.map(m => {
+                    const mesData = pay[p.id]?.months[m];
+                    const ok      = mesData?.paid;
+                    const exento  = mesData?.exento;
+                    const ref     = mesData?.ref;
+                    const esActivo = ACTIVE_MONTHS.includes(m);
+                    if (!esActivo && !ok && !exento) return (
+                      <div key={m} style={{ background:"rgba(255,255,255,.02)", borderRadius:6,
+                        padding:"5px 3px", textAlign:"center", opacity:.35, border:"1px solid rgba(255,255,255,.03)" }}>
+                        <div style={{ fontSize:7.5, color:"#3a5068" }}>{m}</div>
+                        <div style={{ fontSize:9 }}>—</div>
+                      </div>
+                    );
                     return (
-                      <div key={m} className={"mcell " + (ok ? "mp" : "mup")}
-                        onClick={() => toggleMonth(p.id, m)}
-                        title={ok && ref ? "Ref: " + ref : ok ? "Pagado" : "Pendiente"}>
+                      <div key={m}
+                        className={"mcell " + (exento ? "mex" : ok ? "mp" : "mup")}
+                        style={{}}
+                        onClick={() => {
+                          if (exento) {
+                            // Quitar exención
+                            if (can("pagos")) {
+                              const upd = { ...pay[p.id], months: { ...pay[p.id].months, [m]: { paid:false, date:null, ref:null, monto:null, metodo:null, exento:false, motivoExento:null } } };
+                              safeSetDoc(doc(db,"pay",String(p.id)), upd);
+                            }
+                          } else {
+                            toggleMonth(p.id, m);
+                          }
+                        }}
+                        title={exento ? "Exento: "+mesData?.motivoExento : ok && ref ? "Ref: "+ref : ok ? "Pagado" : "Pendiente"}>
                         <div className="mclbl">{m}</div>
-                        <div className="mcico">{ok ? "✅" : "❌"}</div>
-                        {ok && ref && <div style={{ fontSize:6, color:"#7ab3e0", marginTop:1,
-                          overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
-                          maxWidth:"100%", lineHeight:1.2 }}>#{ref.slice(-6)}</div>}
+                        <div className="mcico">{exento ? "🔓" : ok ? "✅" : "❌"}</div>
+                        {exento && <div style={{ fontSize:5.5, color:"#d4b84a", marginTop:1, lineHeight:1.2,
+                          overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", maxWidth:"100%" }}>Exento</div>}
+                        {!exento && ok && ref && <div style={{ fontSize:6, color:"#7ab3e0", marginTop:1,
+                          overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", maxWidth:"100%", lineHeight:1.2 }}>#{ref.slice(-6)}</div>}
+                        {/* Botón exento — solo aparece en meses no pagados con permiso */}
+                        {!ok && !exento && can("pagos") && (
+                          <div style={{ fontSize:5.5, color:"#8a7040", marginTop:1, cursor:"pointer",
+                            textDecoration:"underline" }}
+                            onClick={e=>{ e.stopPropagation(); setExentoModal({pid:p.id,mes:m}); setExentoMotivo(""); }}>
+                            exentar
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -6573,7 +6607,7 @@ export default function App() {
     // ── STATS ───────────────────────────────
     if (tab === "stats") {
       const total     = players.length;
-      const alDia     = players.filter(p => ACTIVE_MONTHS.every(m => pay[p.id] && pay[p.id].months[m] && pay[p.id].months[m].paid)).length;
+      const alDia     = players.filter(p => ACTIVE_MONTHS.every(m => pay[p.id]?.months[m]?.paid || pay[p.id]?.months[m]?.exento)).length;
       const yellow    = players.reduce((a,p) => a + ((sanc[p.id] && sanc[p.id].yellows) || 0), 0);
       // Para stats: si filtra por categoría, incluir jugadores de esa cat
       // + jugadores en préstamo que tienen stats en esa categoría
@@ -6712,7 +6746,7 @@ export default function App() {
             <div className="ch"><span className="ct">Pagos por Categoría</span></div>
             {CATS.map(c => {
               const cp  = players.filter(p => p.cat === c);
-              const ok  = cp.filter(p => ACTIVE_MONTHS.every(m => pay[p.id] && pay[p.id].months[m] && pay[p.id].months[m].paid)).length;
+              const ok  = cp.filter(p => ACTIVE_MONTHS.every(m => pay[p.id]?.months[m]?.paid || pay[p.id]?.months[m]?.exento)).length;
               const pct = cp.length ? Math.round(ok / cp.length * 100) : 0;
               return (
                 <div key={c} style={{ marginBottom:8 }}>
@@ -7058,7 +7092,7 @@ export default function App() {
                 <div className="inp-2">
                   <div className="inp-wrap">
                     <div className="inp-lbl">Fecha *</div>
-                    <input className="inp" type="date" value={ntT.fecha} onChange={e=>setNtT(n=>({...n,fecha:e.target.value}))}/>
+                    <input className="inp" type="date" value={nt.fecha} onChange={e=>setNt(n=>({...n,fecha:e.target.value}))}/>
                   </div>
                   <div className="inp-wrap">
                     <div className="inp-lbl">Hora *</div>
@@ -7068,7 +7102,7 @@ export default function App() {
                 <div className="inp-2">
                   <div className="inp-wrap">
                     <div className="inp-lbl">Lugar *</div>
-                    <input className="inp" placeholder="Campo A" value={ntT.lugar} onChange={e=>setNtT(n=>({...n,lugar:e.target.value}))}/>
+                    <input className="inp" placeholder="Campo A" value={nt.lugar} onChange={e=>setNt(n=>({...n,lugar:e.target.value}))}/>
                   </div>
                   <div className="inp-wrap">
                     <div className="inp-lbl">Tema</div>
@@ -7079,9 +7113,9 @@ export default function App() {
                 <div className="inp-wrap">
                   <div className="inp-lbl">Categorías * (selecciona una o varias)</div>
                   <div style={{ display:"flex", gap:5, flexWrap:"wrap", marginTop:3 }}>
-                    {CATS.map(cat=>{ const sel=ntT.cats.includes(cat); return (
+                    {CATS.map(cat=>{ const sel=(nt.cats||[]).includes(cat); return (
                       <div key={cat} className={"dt"+(sel?" da":"")} style={{ cursor:"pointer" }}
-                        onClick={()=>setNtT(n=>({...n,cats:sel?n.cats.filter(x=>x!==cat):[...n.cats,cat]}))}>
+                        onClick={()=>setNt(n=>({...n,cats:sel?n.cats.filter(x=>x!==cat):[...n.cats,cat]}))}>
                         {cat}
                       </div>
                     ); })}
@@ -9242,6 +9276,72 @@ export default function App() {
                   </div>
                 </div>
               )}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ── MODAL EXENCIÓN DE MES ── */}
+      {exentoModal && (() => {
+        const { pid, mes } = exentoModal;
+        const pl = players.find(x => String(x.id) === String(pid));
+        if (!pl) return null;
+        function saveExento() {
+          if (!exentoMotivo.trim()) return;
+          const mesData = { paid:false, date:null, ref:null, monto:null, metodo:null,
+            exento:true, motivoExento:exentoMotivo.trim(),
+            exentoBy: user?.name, exentoDate: new Date().toLocaleDateString("es") };
+          const upd = {
+            ...pay[pid],
+            months: { ...pay[pid]?.months, [mes]: mesData },
+            history: [...(pay[pid]?.history||[]), {
+              action:"Exención", item:mes,
+              date: new Date().toLocaleDateString("es"),
+              ref: exentoMotivo.trim()
+            }]
+          };
+          safeSetDoc(doc(db,"pay",String(pid)), upd);
+          setExentoModal(null); setExentoMotivo("");
+        }
+        return (
+          <div className="ov" onClick={e=>{ if(e.target.className==="ov") setExentoModal(null); }}>
+            <div className="modal" style={{ borderTop:"3px solid #d4b84a" }}>
+              <div className="mt2" style={{ color:"#d4b84a" }}>
+                🔓 Marcar como Exento
+                <span className="mx" onClick={()=>setExentoModal(null)}>✕</span>
+              </div>
+              {/* Info del jugador y mes */}
+              <div style={{ background:"rgba(212,184,74,.07)", border:"1px solid rgba(212,184,74,.2)",
+                borderRadius:8, padding:"9px 12px", marginBottom:12 }}>
+                <div style={{ fontSize:11, fontWeight:600, color:"#fff" }}>{pl.nombre} {pl.apellido}</div>
+                <div style={{ fontSize:9, color:"#8a7040", marginTop:2 }}>
+                  {mes} — {pl.cat} · #{pl.num}
+                </div>
+              </div>
+              <div style={{ fontSize:8.5, color:"#4e6a88", marginBottom:10, lineHeight:1.6 }}>
+                El mes quedará marcado como <strong style={{ color:"#d4b84a" }}>🔓 Exento</strong> — 
+                no contará como deuda ni como pago. Se registrará en el historial.
+              </div>
+              {/* Motivo obligatorio */}
+              <div className="inp-wrap" style={{ marginBottom:12 }}>
+                <div className="inp-lbl">Motivo de exención <span style={{ color:"#E53935" }}>*</span></div>
+                <textarea className="inp" rows={3} style={{ resize:"none" }}
+                  placeholder="Ej: Beca deportiva, lesión de larga duración, acuerdo especial..."
+                  value={exentoMotivo}
+                  onChange={e=>setExentoMotivo(e.target.value)}/>
+                {exentoMotivo.trim().length === 0 && (
+                  <div style={{ fontSize:7.5, color:"#E53935", marginTop:3 }}>El motivo es obligatorio</div>
+                )}
+              </div>
+              <div style={{ display:"flex", gap:8 }}>
+                <button className="btn-sm" style={{ flex:1 }} onClick={()=>setExentoModal(null)}>Cancelar</button>
+                <button className="btn" style={{ flex:2, background:"rgba(212,184,74,.15)",
+                  border:"1px solid rgba(212,184,74,.4)", color:"#d4b84a",
+                  opacity: exentoMotivo.trim() ? 1 : 0.4 }}
+                  onClick={saveExento}>
+                  🔓 CONFIRMAR EXENCIÓN
+                </button>
+              </div>
             </div>
           </div>
         );
