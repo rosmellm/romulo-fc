@@ -2412,6 +2412,7 @@ export default function App() {
   const [listType, setListType] = useState("pendientes");
   const [listCat,  setListCat]  = useState("Todas");
   const photoRef = useRef();
+  const chatRef  = useRef(null);
   // Modal de registro de pago mensual
   const [payModal,  setPayModal]  = useState(null); // { pid, mes }
   const [payRef,    setPayRef]    = useState("");
@@ -2519,6 +2520,7 @@ export default function App() {
   const [trCat,        setTrCat]        = useState("Sub-15");
   const [trEquips,     setTrEquips]     = useState(["",""]);
   const [trErr,        setTrErr]        = useState("");
+  const [calVista,     setCalVista]     = useState("lista"); // "lista" | "semanal"
   const [hp, setHp] = useState({ home:"Rómulo FC", away:"", date:"", cat:"Sub-15", field:"", scoreH:"", scoreA:"", fase:"Normal", champId:"" });
   const [hpStats, setHpStats] = useState({}); // { playerId: { goles, asistencias, amarilla, roja } }
   const [hpStep, setHpStep] = useState(1); // 1=datos, 2=jugadores
@@ -5539,7 +5541,9 @@ export default function App() {
           return aFut === 0 ? a.fecha.localeCompare(b.fecha) : b.fecha.localeCompare(a.fecha);
         });
 
-      const selTrain    = attSession ? trainings.find(t => t.id === attSession) : null;
+      const selTrain    = attSession ? (trainings.find(t => t.id === attSession) || null) : null;
+      // Si attSession apunta a un entreno eliminado, resetear
+      if (attSession && !selTrain) { setAttSession(null); }
       const trainPlayers = selTrain
         ? players.filter(p => (selTrain.cats||[]).includes(p.cat))
         : [];
@@ -6005,6 +6009,65 @@ export default function App() {
       return (
         <>
           <div className="st">📅 Partidos</div>
+
+          {/* Toggle vista lista / semanal */}
+          <div style={{ display:"flex", gap:6, marginBottom:8 }}>
+            {[["lista","📋 Lista"],["semanal","📆 Semanal"]].map(([k,l])=>(
+              <button key={k} className="btn-sm"
+                style={{ flex:1, fontSize:9,
+                  background: (calVista||"lista")===k?"rgba(33,150,243,.2)":"rgba(255,255,255,.03)",
+                  color: (calVista||"lista")===k?"#7ab3e0":"#4e6a88",
+                  borderColor: (calVista||"lista")===k?"rgba(33,150,243,.4)":"rgba(255,255,255,.05)" }}
+                onClick={()=>setCalVista(k)}>{l}</button>
+            ))}
+          </div>
+
+          {/* Vista semanal — reutiliza la agenda */}
+          {(calVista||"lista")==="semanal" && (() => {
+            const MESES_N = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+            const DIAS_S  = ["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"];
+            const hoy = new Date();
+            const lunes = new Date(hoy);
+            lunes.setDate(hoy.getDate() - ((hoy.getDay()||7)-1) + agendaSemana*7);
+            const dias = Array.from({length:7},(_,i)=>{ const d=new Date(lunes); d.setDate(lunes.getDate()+i); return d; });
+            function parseD(ds){ if(!ds)return null; if(/^\d{4}-\d{2}-\d{2}$/.test(ds.trim())){const[y,m,d]=ds.trim().split("-").map(Number);return new Date(y,m-1,d);} const mes={Ene:0,Feb:1,Mar:2,Abr:3,May:4,Jun:5,Jul:6,Ago:7,Sep:8,Oct:9,Nov:10,Dic:11,Enero:0,Febrero:1,Marzo:2,Abril:3,Mayo:4,Junio:5,Julio:6,Agosto:7,Septiembre:8,Octubre:9,Noviembre:10,Diciembre:11};const parts=ds.trim().split(/\s+/);if(parts.length>=2){const dd=parseInt(parts[0]),mm=mes[parts[1]],yy=parts[2]?parseInt(parts[2]):new Date().getFullYear();if(!isNaN(dd)&&mm!==undefined)return new Date(yy,mm,dd);}return null;}
+            return (
+              <div style={{ marginBottom:12 }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+                  <button className="btn-sm" onClick={()=>setAgendaSemana(agendaSemana-1)}>‹</button>
+                  <span style={{ fontSize:9, color:"#7ab3e0", fontWeight:600 }}>
+                    {dias[0].getDate()} {MESES_N[dias[0].getMonth()].slice(0,3)} – {dias[6].getDate()} {MESES_N[dias[6].getMonth()].slice(0,3)}
+                  </span>
+                  <button className="btn-sm" onClick={()=>setAgendaSemana(agendaSemana+1)}>›</button>
+                </div>
+                <div style={{ display:"flex", gap:3 }}>
+                  {dias.map((date,i)=>{
+                    const esHoy = date.toDateString()===new Date().toDateString();
+                    const partsDia = matches.filter(m=>{ const d=parseD(m.date); return d&&d.toDateString()===date.toDateString(); });
+                    return (
+                      <div key={i} style={{ flex:1, minHeight:70, borderRadius:8, padding:"4px 3px",
+                        background: esHoy?"rgba(21,101,192,.12)":"rgba(255,255,255,.02)",
+                        border:`1px solid ${esHoy?"rgba(33,150,243,.3)":"rgba(255,255,255,.04)"}`,
+                        display:"flex", flexDirection:"column", alignItems:"center", gap:2 }}>
+                        <div style={{ fontSize:7, color:"#3a5068", fontWeight:600 }}>{DIAS_S[date.getDay()]}</div>
+                        <div style={{ fontSize:11, fontWeight:700, color:esHoy?"#7ab3e0":"#8a9ab0" }}>{date.getDate()}</div>
+                        {partsDia.map((m,mi)=>(
+                          <div key={mi} style={{ borderRadius:3, padding:"1px 3px", width:"90%",
+                            background: m.status==="finalizado"?"rgba(21,101,192,.2)":"rgba(33,150,243,.12)",
+                            borderLeft:`2px solid ${m.status==="finalizado"?"#1565C0":"#2196F3"}`,
+                            fontSize:6.5, color:"#c0cfe0", lineHeight:1.3,
+                            overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                            ⚽ {m.away}
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
+
           <div className="dtabs">
             {["Todas",...CATS].map(c => (
               <div key={c} className={"dt" + (catF===c ? " da" : "")} onClick={() => setCatF(c)}>{c}</div>
@@ -6419,7 +6482,6 @@ export default function App() {
     if (tab === "chat") {
       const CANALES = ["General", ...CATS];
       const filtMsgs = chatMsgs.filter(m => m.canal === chatCat);
-      const chatRef  = useRef(null);
 
       function sendChatMsg() {
         const txt = chatMsg.trim();
@@ -6897,6 +6959,66 @@ export default function App() {
       return (
         <>
           <div className="st">🏃 Entrenamientos</div>
+
+          {/* Toggle vista lista / semanal */}
+          <div style={{ display:"flex", gap:6, marginBottom:8 }}>
+            {[["lista","📋 Lista"],["semanal","📆 Semanal"]].map(([k,l])=>(
+              <button key={k} className="btn-sm"
+                style={{ flex:1, fontSize:9,
+                  background: (calVista||"lista")===k?"rgba(33,150,243,.2)":"rgba(255,255,255,.03)",
+                  color: (calVista||"lista")===k?"#7ab3e0":"#4e6a88",
+                  borderColor: (calVista||"lista")===k?"rgba(33,150,243,.4)":"rgba(255,255,255,.05)" }}
+                onClick={()=>setCalVista(k)}>{l}</button>
+            ))}
+          </div>
+
+          {/* Vista semanal de entrenamientos */}
+          {(calVista||"lista")==="semanal" && (() => {
+            const MESES_N = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+            const DIAS_S  = ["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"];
+            const hoyD = new Date();
+            const lunes = new Date(hoyD);
+            lunes.setDate(hoyD.getDate() - ((hoyD.getDay()||7)-1) + agendaSemana*7);
+            const dias = Array.from({length:7},(_,i)=>{ const d=new Date(lunes); d.setDate(lunes.getDate()+i); return d; });
+            return (
+              <div style={{ marginBottom:12 }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+                  <button className="btn-sm" onClick={()=>setAgendaSemana(agendaSemana-1)}>‹</button>
+                  <span style={{ fontSize:9, color:"#7ab3e0", fontWeight:600 }}>
+                    {dias[0].getDate()} {MESES_N[dias[0].getMonth()].slice(0,3)} – {dias[6].getDate()} {MESES_N[dias[6].getMonth()].slice(0,3)}
+                  </span>
+                  <button className="btn-sm" onClick={()=>setAgendaSemana(agendaSemana+1)}>›</button>
+                </div>
+                <div style={{ display:"flex", gap:3 }}>
+                  {dias.map((date,i)=>{
+                    const esHoy = date.toDateString()===hoyD.toDateString();
+                    const isoD  = date.getFullYear()+"-"+String(date.getMonth()+1).padStart(2,"0")+"-"+String(date.getDate()).padStart(2,"0");
+                    const entrsDia = (user.cat==="Todas"?trainings:trainings.filter(t=>(t.cats||[]).includes(user.cat)))
+                      .filter(t=>t.fecha===isoD);
+                    return (
+                      <div key={i} style={{ flex:1, minHeight:70, borderRadius:8, padding:"4px 3px",
+                        background: esHoy?"rgba(21,101,192,.12)":"rgba(255,255,255,.02)",
+                        border:`1px solid ${esHoy?"rgba(33,150,243,.3)":"rgba(255,255,255,.04)"}`,
+                        display:"flex", flexDirection:"column", alignItems:"center", gap:2 }}>
+                        <div style={{ fontSize:7, color:"#3a5068", fontWeight:600 }}>{DIAS_S[date.getDay()]}</div>
+                        <div style={{ fontSize:11, fontWeight:700, color:esHoy?"#7ab3e0":"#8a9ab0" }}>{date.getDate()}</div>
+                        {entrsDia.map((t,ti)=>(
+                          <div key={ti} style={{ borderRadius:3, padding:"1px 3px", width:"90%",
+                            background:"rgba(21,101,192,.15)",
+                            borderLeft:"2px solid #1976D2",
+                            fontSize:6.5, color:"#c0cfe0", lineHeight:1.3,
+                            overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                            🏃 {t.tema||t.hora}
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
+
           {can("jugadores") && (
             <button className="btn" style={{ marginBottom:9 }} onClick={()=>{ setShowTFormT(true); setEditTrain(null); setNt(NT_BLANK_T); setFormErr(""); }}>
               + Agregar Sesión
