@@ -3652,7 +3652,7 @@ export default function App() {
     // Entrenamientos de su categoría
     const hoyISOsp  = new Date().toISOString().slice(0,10);
     const spTrains  = spCat
-      ? trainings.filter(t => (t.cats||[]).includes(spCat) && t.fecha >= hoyISOsp).sort((a,b)=>a.fecha.localeCompare(b.fecha))
+      ? trainings.filter(t => (t.cats||[]).includes(spCat) && t.fecha >= hoyISOsp).sort((a,b)=>(a.fecha||"").localeCompare(b.fecha||""))
       : [];
 
     // Pagos del jugador
@@ -4269,8 +4269,8 @@ export default function App() {
       if (tab === "entrenos") {
         const hoyISO = new Date().toISOString().slice(0,10);
         const myT = trainings.filter(t => !spCat || (t.cats||[]).includes(spCat));
-        const proxT = myT.filter(t=>t.fecha>=hoyISO).sort((a,b)=>a.fecha.localeCompare(b.fecha));
-        const pastT = myT.filter(t=>t.fecha<hoyISO).sort((a,b)=>b.fecha.localeCompare(a.fecha)).slice(0,10);
+        const proxT = myT.filter(t=>t.fecha&&t.fecha>=hoyISO).sort((a,b)=>(a.fecha||"").localeCompare(b.fecha||""));
+        const pastT = myT.filter(t=>t.fecha&&t.fecha<hoyISO).sort((a,b)=>(b.fecha||"").localeCompare(a.fecha||"")).slice(0,10);
         function FechaLeg(f){ if(!f) return "—"; const d=new Date(f+"T12:00:00"); return d.toLocaleDateString("es",{weekday:"short",day:"numeric",month:"short"}); }
         return (
           <>
@@ -5539,13 +5539,13 @@ export default function App() {
       const hoyISO  = new Date().toISOString().slice(0,10);
       // Entrenamientos ordenados: próximos primero, luego pasados
       const myTrains = [...trainings]
-        .filter(t => user.cat === "Todas" || (t.cats||[]).includes(user.cat))
+        .filter(t => t.fecha && (user.cat === "Todas" || (t.cats||[]).includes(user.cat)))
         .sort((a,b) => {
           // Próximos arriba, pasados abajo
-          const aFut = a.fecha >= hoyISO ? 0 : 1;
-          const bFut = b.fecha >= hoyISO ? 0 : 1;
+          const aFut = (a.fecha||"") >= hoyISO ? 0 : 1;
+          const bFut = (b.fecha||"") >= hoyISO ? 0 : 1;
           if (aFut !== bFut) return aFut - bFut;
-          return aFut === 0 ? a.fecha.localeCompare(b.fecha) : b.fecha.localeCompare(a.fecha);
+          return aFut === 0 ? (a.fecha||"").localeCompare(b.fecha||"") : (b.fecha||"").localeCompare(a.fecha||"");
         });
 
       const selTrain    = attSession ? (trainings.find(t => t.id === attSession) || null) : null;
@@ -6924,8 +6924,8 @@ export default function App() {
       }
 
       const hoy = new Date().toISOString().slice(0,10);
-      const proximos = [...trainings].filter(t=>t.fecha>=hoy).sort((a,b)=>a.fecha.localeCompare(b.fecha));
-      const pasados  = [...trainings].filter(t=>t.fecha<hoy).sort((a,b)=>b.fecha.localeCompare(a.fecha)).slice(0,20);
+      const proximos = [...trainings].filter(t=>t.fecha&&t.fecha>=hoy).sort((a,b)=>(a.fecha||"").localeCompare(b.fecha||""));
+      const pasados  = [...trainings].filter(t=>t.fecha&&t.fecha<hoy).sort((a,b)=>(b.fecha||"").localeCompare(a.fecha||"")).slice(0,20);
       const myTrains = user.cat==="Todas" ? proximos : proximos.filter(t=>t.cats?.includes(user.cat));
       const myPast   = user.cat==="Todas" ? pasados  : pasados.filter(t=>t.cats?.includes(user.cat));
 
