@@ -2521,7 +2521,8 @@ export default function App() {
   const [trEquips,     setTrEquips]     = useState(["",""]);
   const [trErr,        setTrErr]        = useState("");
   const [calVista,     setCalVista]     = useState("lista");
-  const [exentoModal, setExentoModal] = useState(null); // { pid, mes }
+  const [exentoModal, setExentoModal] = useState(null);
+  const [selectedChildId, setSelectedChildId] = useState(null); // para rep con múltiples hijos // { pid, mes }
   const [exentoMotivo,setExentoMotivo]= useState("");
   const [hp, setHp] = useState({ home:"Rómulo FC", away:"", date:"", cat:"Sub-15", field:"", scoreH:"", scoreA:"", fase:"Normal", champId:"" });
   const [hpStats, setHpStats] = useState({}); // { playerId: { goles, asistencias, amarilla, roja } }
@@ -3238,9 +3239,17 @@ export default function App() {
       sessionStorage.setItem("rfc_session", JSON.stringify({ role:"player", user:u }));
     } else if (role === "parent") {
       const clean = lid.trim().toUpperCase().replace(/\s/g,"");
-      const p = players.find(x => x.repCedula && x.repCedula.toUpperCase().replace(/\s/g,"") === clean);
-      if (!p) { setLerr("Cédula del representante no registrada"); return; }
-      const u = { name: p.repNombre + " " + p.repApellido, playerId: p.id, cat: p.cat, perms:[] };
+      const todos = players.filter(x => x.repCedula && x.repCedula.toUpperCase().replace(/\s/g,"") === clean);
+      if (!todos.length) { setLerr("Cédula del representante no registrada"); return; }
+      const p = todos[0];
+      // Guardar todos los IDs de hijos para que el rep pueda cambiar entre ellos
+      const u = {
+        name: p.repNombre + " " + p.repApellido,
+        playerId: p.id,
+        playerIds: todos.map(x => x.id), // todos los hijos
+        cat: p.cat,
+        perms: []
+      };
       setUser(u); setLoggedIn(true);
       sessionStorage.setItem("rfc_session", JSON.stringify({ role:"parent", user:u }));
     }
@@ -3638,8 +3647,14 @@ export default function App() {
 
   // ── SPECTATOR (jugador / representante / visitante) ──
   if (!isAdmin) {
-    const isVisitor = !user.playerId;
-    const sp        = user.playerId ? players.find(p => p.id === user.playerId) : null;
+    const isVisitor  = !user.playerId;
+    const isParent   = role === "parent";
+    // Si el representante tiene múltiples hijos, permitir seleccionar cuál ver
+    const allChildIds = user.playerIds || (user.playerId ? [user.playerId] : []);
+    const activeChildId = (isParent && allChildIds.length > 1)
+      ? (selectedChildId || allChildIds[0])
+      : user.playerId;
+    const sp        = activeChildId ? players.find(p => p.id === activeChildId) : null;
     const spCat     = sp ? sp.cat : null;
 
     // Partidos: jugador/rep ven su categoría, visitante ve todos
@@ -3779,6 +3794,45 @@ export default function App() {
         const lastPago  = spPay?.history?.filter(h => h.action==="Pago").slice(-1)[0];
         return (
           <>
+            {/* Selector de hijo para representantes con múltiples jugadores */}
+            {isParent && allChildIds.length > 1 && (
+              <div style={{ background:"rgba(21,101,192,.08)", border:"1px solid rgba(33,150,243,.15)",
+                borderRadius:10, padding:"10px 12px", marginBottom:10 }}>
+                <div style={{ fontSize:8, color:"#3a5068", textTransform:"uppercase", letterSpacing:.5, marginBottom:7 }}>
+                  👨‍👦 Tus jugadores
+                </div>
+                <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
+                  {allChildIds.map(cid => {
+                    const child = players.find(x => x.id === cid);
+                    if (!child) return null;
+                    const isActive = cid === activeChildId;
+                    return (
+                      <div key={cid}
+                        onClick={() => setSelectedChildId(cid)}
+                        style={{ display:"flex", alignItems:"center", gap:10, padding:"8px 10px",
+                          borderRadius:8, cursor:"pointer",
+                          background: isActive ? "rgba(21,101,192,.2)" : "rgba(255,255,255,.02)",
+                          border: `1px solid ${isActive ? "rgba(33,150,243,.4)" : "rgba(255,255,255,.05)"}` }}>
+                        <div style={{ width:30, height:30, borderRadius:"50%", flexShrink:0,
+                          background:"rgba(21,101,192,.2)", border:`2px solid ${isActive?"#2196F3":"rgba(255,255,255,.1)"}`,
+                          display:"flex", alignItems:"center", justifyContent:"center",
+                          fontSize:12, fontWeight:700, color:"#7ab3e0" }}>
+                          {child.nombre[0]}
+                        </div>
+                        <div style={{ flex:1 }}>
+                          <div style={{ fontSize:10, fontWeight:600, color: isActive?"#7ab3e0":"#c0cfe0" }}>
+                            {child.nombre} {child.apellido}
+                          </div>
+                          <div style={{ fontSize:8, color:"#4e6a88" }}>{child.cat} · #{child.num}</div>
+                        </div>
+                        {isActive && <span style={{ fontSize:10, color:"#2196F3" }}>●</span>}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             <div className="hero">
               <div className="hero-av" style={{ background: sp.col, border: susp ? "3px solid #E53935" : "2px solid #1565C0" }}>
                 {sp.foto ? <img src={sp.foto} alt="" /> : sp.nombre[0]}
