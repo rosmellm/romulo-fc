@@ -2412,7 +2412,6 @@ export default function App() {
   const [listType, setListType] = useState("pendientes");
   const [listCat,  setListCat]  = useState("Todas");
   const photoRef = useRef();
-  const chatRef  = useRef(null);
   // Modal de registro de pago mensual
   const [payModal,  setPayModal]  = useState(null); // { pid, mes }
   const [payRef,    setPayRef]    = useState("");
@@ -2565,6 +2564,14 @@ export default function App() {
     if (isDemo) return Promise.resolve();
     return deleteDoc(ref);
   }
+
+  // ── Reset attSession si el entreno fue eliminado ──
+  useEffect(() => {
+    if (attSession && trainings.length > 0) {
+      const existe = trainings.find(t => t.id === attSession);
+      if (!existe) setAttSession(null);
+    }
+  }, [trainings, attSession]);
 
   // ── ACTIONS ────────────────────────────────
   function toggleAtt(pid) {
@@ -5542,8 +5549,7 @@ export default function App() {
         });
 
       const selTrain    = attSession ? (trainings.find(t => t.id === attSession) || null) : null;
-      // Si attSession apunta a un entreno eliminado, resetear
-      if (attSession && !selTrain) { setAttSession(null); }
+      // Nota: si selTrain es null con attSession activo, simplemente no mostramos nada hasta que Firebase sincronice
       const trainPlayers = selTrain
         ? players.filter(p => (selTrain.cats||[]).includes(p.cat))
         : [];
@@ -6512,7 +6518,7 @@ export default function App() {
           </div>
 
           {/* Mensajes */}
-          <div ref={chatRef} style={{ minHeight:300, maxHeight:"calc(100vh - 340px)", overflowY:"auto",
+          <div style={{ minHeight:300, maxHeight:"calc(100vh - 340px)", overflowY:"auto",
             background:"#06091a", borderRadius:10, border:"1px solid rgba(33,150,243,.08)",
             padding:"10px", marginBottom:10, display:"flex", flexDirection:"column", gap:8 }}>
             {filtMsgs.length === 0 && (
