@@ -83,6 +83,26 @@ const DEMO_COACHES = [
   { id:1, name:"Rómulo García", role:"Director Técnico", cat:"Todas", pin:"1111", perms:["inicio","jugadores","asistencia","pagos","calendario","entrenamientos","campeonatos","uniformes","chat","stats","entrenadores","config","partido"] },
   { id:2, name:"Carlos Mendez", role:"Entrenador Sub-15", cat:"Sub-15", pin:"2222", perms:["inicio","jugadores","asistencia","pagos","calendario","entrenamientos","campeonatos","uniformes","chat","stats","partido"] },
 ];
+// Rangos de edad por categoría — se actualizan automáticamente cada año
+// Base: 2026 → Sub-11: 2016-2017, Sub-13: 2014-2015, Sub-15: 2012-2013, Sub-17: 2010-2011, Sub-19: 2008-2009
+const BASE_YEAR = 2026;
+const BASE_RANGES = { "Sub-11":[2016,2017], "Sub-13":[2014,2015], "Sub-15":[2012,2013], "Sub-17":[2010,2011], "Sub-19":[2008,2009] };
+function getCatRanges() {
+  const diff = new Date().getFullYear() - BASE_YEAR;
+  const ranges = {};
+  Object.entries(BASE_RANGES).forEach(([cat,[min,max]]) => {
+    ranges[cat] = [min+diff, max+diff];
+  });
+  return ranges;
+}
+const CAT_RANGES = getCatRanges(); // { "Sub-11": [2016,2017], ... }
+function getCatByYear(anio) {
+  for (const [cat,[min,max]] of Object.entries(CAT_RANGES)) {
+    if (anio >= min && anio <= max) return cat;
+  }
+  return null;
+}
+
 const CAT_COLOR = {
   "Sub-11":"#1565C0","Sub-13":"#0D47A1","Sub-15":"#1976D2",
   "Sub-17":"#1E88E5","Sub-19":"#2196F3"
@@ -2522,7 +2542,12 @@ export default function App() {
   const [trErr,        setTrErr]        = useState("");
   const [calVista,     setCalVista]     = useState("lista");
   const [exentoModal, setExentoModal] = useState(null);
-  const [selectedChildId, setSelectedChildId] = useState(null); // para rep con múltiples hijos // { pid, mes }
+  const [selectedChildId, setSelectedChildId] = useState(null);
+  const [bulkMode,      setBulkMode]      = useState(false);   // modo edición masiva
+  const [bulkSel,       setBulkSel]       = useState([]);      // ids seleccionados
+  const [bulkAction,    setBulkAction]    = useState("cat");   // "cat"|"uniforme"
+  const [bulkVal,       setBulkVal]       = useState({});      // valores a aplicar
+  const [anoFiltro,     setAnoFiltro]     = useState("");      // filtro por año nacimiento
   const [exentoMotivo,setExentoMotivo]= useState("");
   const [hp, setHp] = useState({ home:"Rómulo FC", away:"", date:"", cat:"Sub-15", field:"", scoreH:"", scoreA:"", fase:"Normal", champId:"" });
   const [hpStats, setHpStats] = useState({}); // { playerId: { goles, asistencias, amarilla, roja } }
@@ -5157,17 +5182,71 @@ export default function App() {
 
     // ── JUGADORES ───────────────────────────
     if (tab === "jugadores") {
+      // Filtro adicional por año de nacimiento
+      const filtPConAno = anoFiltro
+        ? filtP.filter(p => p.dob && String(new Date(p.dob).getFullYear()) === anoFiltro)
+        : filtP;
+
       return (
         <>
           <div className="st">👥 Jugadores</div>
+
+          {/* Tabs categoría */}
           <div className="dtabs">
             {["Todas",...CATS].map(c => (
-              <div key={c} className={"dt" + (catF===c ? " da" : "")} onClick={() => setCatF(c)}>{c}</div>
+              <div key={c} className={"dt" + (catF===c ? " da" : "")} onClick={() => { setCatF(c); setAnoFiltro(""); }}>{c}</div>
             ))}
           </div>
+
+          {/* Tabla de años por categoría */}
+          <div style={{ background:"rgba(21,101,192,.06)", border:"1px solid rgba(33,150,243,.1)",
+            borderRadius:10, padding:"8px 10px", marginBottom:8 }}>
+            <div style={{ fontSize:7.5, color:"#3a5068", textTransform:"uppercase", letterSpacing:.5, marginBottom:6 }}>
+              📅 Años por categoría ({new Date().getFullYear()})
+            </div>
+            <div style={{ display:"flex", flexWrap:"wrap", gap:4 }}>
+              {CATS.map(cat => {
+                const [min,max] = CAT_RANGES[cat];
+                return (
+                  <div key={cat} style={{ background:"rgba(21,101,192,.1)", borderRadius:6,
+                    padding:"4px 8px", border:"1px solid rgba(33,150,243,.15)" }}>
+                    <span style={{ fontSize:8, fontWeight:700, color:"#7ab3e0" }}>{cat}</span>
+                    <span style={{ fontSize:7.5, color:"#4e6a88", marginLeft:4 }}>{min}–{max}</span>
+                  </div>
+                );
+              })}
+            </div>
+            {/* Filtro por año específico */}
+            <div style={{ marginTop:7, display:"flex", gap:3, flexWrap:"wrap" }}>
+              <button className="btn-sm"
+                style={{ fontSize:7, padding:"2px 7px",
+                  background:!anoFiltro?"rgba(212,184,74,.2)":"rgba(255,255,255,.03)",
+                  color:!anoFiltro?"#d4b84a":"#4e6a88",
+                  borderColor:!anoFiltro?"rgba(212,184,74,.4)":"rgba(255,255,255,.05)" }}
+                onClick={()=>setAnoFiltro("")}>Todos</button>
+              {(() => {
+                const years = new Set(filtP.map(p => p.dob ? new Date(p.dob).getFullYear() : null).filter(Boolean));
+                return [...years].sort((a,b)=>b-a).map(y => {
+                  const cat = getCatByYear(y);
+                  return (
+                    <button key={y} className="btn-sm"
+                      style={{ fontSize:7, padding:"2px 7px",
+                        background:anoFiltro===String(y)?"rgba(33,150,243,.25)":"rgba(255,255,255,.03)",
+                        color:anoFiltro===String(y)?"#7ab3e0":"#4e6a88",
+                        borderColor:anoFiltro===String(y)?"rgba(33,150,243,.4)":"rgba(255,255,255,.05)" }}
+                      onClick={()=>setAnoFiltro(String(y))}>
+                      {y}{cat ? <span style={{ color:"#d4b84a", marginLeft:2 }}>({cat})</span> : ""}
+                    </button>
+                  );
+                });
+              })()}
+            </div>
+          </div>
+
           <input className="inp" style={{ marginBottom:8 }} placeholder="🔍 Buscar..."
             value={search} onChange={e => setSearch(e.target.value)}
           />
+
           {can("jugadores") && (
             <div style={{ display:"flex", gap:6, marginBottom:9 }}>
               <button className="btn" style={{ flex:1 }} onClick={() => { setShowAdd(true); setFormErr(""); setAddOk(false); }}>
@@ -5177,23 +5256,144 @@ export default function App() {
                 onClick={() => setShowCsvImport(true)}>
                 📥 Importar CSV
               </button>
+              <button className="btn-sm"
+                style={{ padding:"8px 12px", fontSize:9,
+                  background: bulkMode?"rgba(212,184,74,.2)":"rgba(255,255,255,.03)",
+                  color: bulkMode?"#d4b84a":"#4e6a88",
+                  borderColor: bulkMode?"rgba(212,184,74,.4)":"rgba(255,255,255,.05)" }}
+                onClick={() => { setBulkMode(!bulkMode); setBulkSel([]); setBulkVal({}); }}>
+                {bulkMode ? "✕ Cancelar" : "✏️ Masivo"}
+              </button>
             </div>
           )}
+
+          {/* Panel de edición masiva */}
+          {bulkMode && (
+            <div style={{ background:"rgba(212,184,74,.07)", border:"1px solid rgba(212,184,74,.25)",
+              borderRadius:10, padding:"12px", marginBottom:10 }}>
+              <div style={{ fontSize:9, fontWeight:700, color:"#d4b84a", marginBottom:8 }}>
+                ✏️ Edición Masiva — {bulkSel.length} jugador{bulkSel.length!==1?"es":""} seleccionado{bulkSel.length!==1?"s":""}
+              </div>
+
+              {/* Selector de acción */}
+              <div style={{ display:"flex", gap:5, marginBottom:10 }}>
+                {[["cat","📂 Categoría"],["uniforme","👕 Uniforme"]].map(([k,l])=>(
+                  <button key={k} className="btn-sm"
+                    style={{ flex:1, fontSize:8.5,
+                      background:bulkAction===k?"rgba(33,150,243,.2)":"rgba(255,255,255,.03)",
+                      color:bulkAction===k?"#7ab3e0":"#4e6a88",
+                      borderColor:bulkAction===k?"rgba(33,150,243,.35)":"rgba(255,255,255,.05)" }}
+                    onClick={()=>{ setBulkAction(k); setBulkVal({}); }}>{l}</button>
+                ))}
+              </div>
+
+              {/* Campos según acción */}
+              {bulkAction==="cat" && (
+                <div className="inp-wrap" style={{ marginBottom:8 }}>
+                  <div className="inp-lbl">Nueva categoría</div>
+                  <select className="inp" value={bulkVal.cat||""} onChange={e=>setBulkVal({cat:e.target.value})}>
+                    <option value="">— Seleccionar —</option>
+                    {CATS.map(c=><option key={c}>{c}</option>)}
+                  </select>
+                </div>
+              )}
+              {bulkAction==="uniforme" && (
+                <div className="inp-2" style={{ marginBottom:8 }}>
+                  <div className="inp-wrap">
+                    <div className="inp-lbl">Talla</div>
+                    <select className="inp" value={bulkVal.talla||""} onChange={e=>setBulkVal(v=>({...v,talla:e.target.value}))}>
+                      <option value="">— Sin cambio —</option>
+                      {["XS","S","M","L","XL","XXL"].map(t=><option key={t}>{t}</option>)}
+                    </select>
+                  </div>
+                  <div className="inp-wrap">
+                    <div className="inp-lbl">N° Camiseta</div>
+                    <input className="inp" type="number" min="1" max="99" placeholder="Ej: 10"
+                      value={bulkVal.num||""} onChange={e=>setBulkVal(v=>({...v,num:e.target.value}))}/>
+                  </div>
+                </div>
+              )}
+
+              {/* Botones seleccionar todos / aplicar */}
+              <div style={{ display:"flex", gap:6 }}>
+                <button className="btn-sm" style={{ flex:1, fontSize:8 }}
+                  onClick={()=> bulkSel.length===filtPConAno.length ? setBulkSel([]) : setBulkSel(filtPConAno.map(p=>p.id))}>
+                  {bulkSel.length===filtPConAno.length ? "✕ Deseleccionar todos" : "☑ Seleccionar todos"}
+                </button>
+                <button className="btn" style={{ flex:2,
+                  opacity: (bulkSel.length===0 || (bulkAction==="cat"&&!bulkVal.cat) || (bulkAction==="uniforme"&&!bulkVal.talla&&!bulkVal.num)) ? 0.4 : 1 }}
+                  onClick={() => {
+                    if (bulkSel.length===0) return;
+                    const updates = {};
+                    if (bulkAction==="cat" && bulkVal.cat) {
+                      bulkSel.forEach(id => { updates[id]={cat:bulkVal.cat}; });
+                    } else if (bulkAction==="uniforme") {
+                      bulkSel.forEach(id => {
+                        const upd = {};
+                        if (bulkVal.talla) upd.talla = bulkVal.talla;
+                        if (bulkVal.num)   upd.num   = parseInt(bulkVal.num)||0;
+                        updates[id] = upd;
+                      });
+                    }
+                    setConf({
+                      title:"EDICIÓN MASIVA",
+                      msg:`¿Aplicar cambios a ${bulkSel.length} jugador${bulkSel.length!==1?"es":""}?`,
+                      okTxt:"Aplicar",
+                      ok: () => {
+                        Object.entries(updates).forEach(([id, upd]) => {
+                          const pl = players.find(x=>String(x.id)===String(id));
+                          if (!pl) return;
+                          safeSetDoc(doc(db,"players",String(id)), { ...pl, ...upd });
+                        });
+                        setBulkMode(false); setBulkSel([]); setBulkVal({});
+                      }
+                    });
+                  }}>
+                  ✅ APLICAR A {bulkSel.length} JUGADOR{bulkSel.length!==1?"ES":""}
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="card">
             <div className="ch">
               <span className="ct">Lista</span>
-              <span className="bg bg-b">{filtP.length}</span>
+              <span className="bg bg-b">{filtPConAno.length}</span>
             </div>
-            {filtP.map(p => {
+            {filtPConAno.map(p => {
               const y = sanc[p.id] && sanc[p.id].yellows > 0;
               const r = sanc[p.id] && sanc[p.id].suspended;
+              const isBulkSel = bulkSel.includes(p.id);
+              const anoNac = p.dob ? new Date(p.dob).getFullYear() : null;
+              const catSugerida = anoNac ? getCatByYear(anoNac) : null;
               return (
-                <div key={p.id} className="pr" style={{ alignItems:"flex-start" }}>
+                <div key={p.id} className="pr" style={{ alignItems:"flex-start",
+                  background: isBulkSel ? "rgba(212,184,74,.06)" : "transparent",
+                  border: isBulkSel ? "1px solid rgba(212,184,74,.2)" : "1px solid transparent",
+                  borderRadius: isBulkSel ? 8 : 0, marginBottom: isBulkSel ? 4 : 0 }}>
+                  {/* Checkbox modo masivo */}
+                  {bulkMode && (
+                    <div onClick={()=> setBulkSel(sel => sel.includes(p.id) ? sel.filter(x=>x!==p.id) : [...sel, p.id])}
+                      style={{ width:22, height:22, borderRadius:5, flexShrink:0, marginRight:4, marginTop:2,
+                        background: isBulkSel?"#1565C0":"rgba(255,255,255,.04)",
+                        border:`2px solid ${isBulkSel?"#2196F3":"rgba(255,255,255,.15)"}`,
+                        display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer" }}>
+                      {isBulkSel && <span style={{ color:"#fff", fontSize:12, fontWeight:700 }}>✓</span>}
+                    </div>
+                  )}
                   <Avatar p={p} size={30} />
                   <div className="pi">
                     <div className="pn">
                       {p.nombre} {p.apellido}
                       {y && " 🟨"}{r && " 🟥"}
+                      {/* Badge año y categoría sugerida */}
+                      {anoNac && (
+                        <span style={{ fontSize:7, marginLeft:5, color:"#4e6a88" }}>{anoNac}</span>
+                      )}
+                      {catSugerida && catSugerida !== p.cat && (
+                        <span style={{ fontSize:7, marginLeft:3, color:"#E53935", background:"rgba(229,57,53,.1)",
+                          padding:"1px 4px", borderRadius:3 }}>→{catSugerida}</span>
+                      )}
                     </div>
                     <div className="ps">{p.cat}{p.subequipo ? <span style={{ color:"#d4b84a", fontWeight:600 }}> · Equipo {p.subequipo}</span> : ""} · #{p.num} · {calcAge(p.dob)} años · CI: {p.cedula || "—"}</div>
 
