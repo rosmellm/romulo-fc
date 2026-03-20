@@ -1,6 +1,26 @@
 // ── Firebase Messaging Service Worker ──────────────────────────
 // Este archivo DEBE estar en la raíz del proyecto (carpeta public/)
 
+// ── Detección de actualizaciones ────────────────────────────────
+// Cuando se instala una nueva versión, tomar control inmediatamente
+self.addEventListener("install", event => {
+  self.skipWaiting();
+});
+
+// Cuando el SW toma control, notificar a todos los clientes
+self.addEventListener("activate", event => {
+  event.waitUntil(
+    clients.claim().then(() => {
+      // Enviar mensaje a todos los clientes abiertos para que muestren el banner
+      return clients.matchAll({ type: "window", includeUncontrolled: true }).then(allClients => {
+        allClients.forEach(client => {
+          client.postMessage({ type: "SW_UPDATED" });
+        });
+      });
+    })
+  );
+});
+
 importScripts("https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js");
 importScripts("https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging-compat.js");
 
