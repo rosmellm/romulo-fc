@@ -573,6 +573,7 @@ body{background:#04060c;color:#afc4d8;font-family:'DM Sans',sans-serif;min-heigh
 .c-p1{color:#2196F3;}.c-p2{color:#E53935;}.c-et{color:#d4b84a;}
 .c-off{color:#d4b84a;animation:blink .9s infinite;}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.25}}
+@keyframes liveBlink{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.3;transform:scale(.7)}}
 .tm-row{display:flex;justify-content:space-between;margin-top:5px;padding:0 1px;}
 .tm-side{display:flex;align-items:center;gap:5px;}
 .tm-lbl{font-size:7px;color:#3a5068;font-weight:400;text-transform:uppercase;font-family:'DM Sans',sans-serif;}
@@ -676,6 +677,72 @@ function ConfirmDialog({ cfg, onClose }) {
         </div>
       </div>
     </div>
+  );
+}
+
+// ── Modal para agregar jugador en pleno partido ──────────────────────────────
+function AddPlayerModal({ match, rivals, myPlayers, curMin, onClose, onAddUs, onAddThem }) {
+  const { useState } = React;
+  const [team,    setTeam]    = useState("us");
+  const [nombre,  setNombre]  = useState("");
+  const [num,     setNum]     = useState("");
+  const [err,     setErr]     = useState("");
+
+  function confirmar() {
+    const n = nombre.trim();
+    const nm = parseInt(num)||0;
+    if (!n) { setErr("Ingresa el nombre"); return; }
+    if (team === "us") {
+      onAddUs(n, nm);
+    } else {
+      if (rivals.find(r => r.num === nm)) { setErr("Ya existe ese número en el rival"); return; }
+      onAddThem(n, nm);
+    }
+  }
+
+  return (
+    <>
+      <div className="mt2">
+        👤 Agregar Jugador · {curMin}'
+        <span className="mx" onClick={onClose}>✕</span>
+      </div>
+
+      <div style={{ display:"flex", gap:6, marginBottom:12 }}>
+        {[["us","🔵 " + (match.home||"RFC")],["them","🔴 " + (match.away||"Rival")]].map(([k,l])=>(
+          <button key={k} className="btn-sm"
+            style={{ flex:1, fontSize:9,
+              background: team===k ? (k==="us"?"rgba(21,101,192,.25)":"rgba(229,57,53,.25)") : "rgba(255,255,255,.03)",
+              color: team===k ? (k==="us"?"#7ab3e0":"#e8a0a0") : "#4e6a88",
+              borderColor: team===k ? (k==="us"?"rgba(33,150,243,.4)":"rgba(229,57,53,.4)") : "rgba(255,255,255,.05)" }}
+            onClick={()=>{ setTeam(k); setErr(""); }}>
+            {l}
+          </button>
+        ))}
+      </div>
+
+      <div className="inp-2" style={{ marginBottom:8 }}>
+        <div className="inp-wrap">
+          <div className="inp-lbl">Nombre *</div>
+          <input className="inp" placeholder="Nombre del jugador" value={nombre}
+            onChange={e=>{ setNombre(e.target.value); setErr(""); }}/>
+        </div>
+        <div className="inp-wrap">
+          <div className="inp-lbl">N° Camiseta</div>
+          <input className="inp" type="number" min="1" max="99" placeholder="10"
+            value={num} onChange={e=>{ setNum(e.target.value); setErr(""); }}/>
+        </div>
+      </div>
+
+      {err && <div className="err" style={{ marginBottom:8 }}>⚠️ {err}</div>}
+
+      <button className="btn" style={{
+        background:   team==="us" ? "rgba(21,101,192,.2)"  : "rgba(229,57,53,.2)",
+        borderColor:  team==="us" ? "rgba(33,150,243,.4)"  : "rgba(229,57,53,.4)",
+        color:        team==="us" ? "#7ab3e0"               : "#e8a0a0"
+      }} onClick={confirmar}>
+        ✅ AGREGAR {team==="us" ? "A RFC" : "AL RIVAL"}
+      </button>
+    </>
   );
 }
 
@@ -804,7 +871,7 @@ function MatchCard({ m, champs }) {
 
 // ─── LIVE MATCH COMPONENT ─────────────────────────────────────
 
-function LiveMatch({ match, myPlayers, sanctions, setSanctions, onClose, onSave, minET = 5 }) {
+function LiveMatch({ match, myPlayers, sanctions, setSanctions, onClose, onSave, onMinimize, onStateChange, minET = 5 }) {
 
   const [phase,      setPhase]     = useState("rivals");
   const [rivals,     setRivals]    = useState([]);
@@ -814,6 +881,10 @@ function LiveMatch({ match, myPlayers, sanctions, setSanctions, onClose, onSave,
   const [convSearch,  setConvSearch]  = useState("");
   const [convCatF,    setConvCatF]    = useState("Todas");
   const [convAnoF,    setConvAnoF]    = useState("");
+  // Jugadores del equipo rival en live match
+  const [rivalPlayers, setRivalPlayers] = useState([]); // [{id, nombre, num}]
+  const [showRivalForm, setShowRivalForm] = useState(false);
+  const [rivalInput, setRivalInput] = useState({ nombre:"", num:"" });
   const [titulares,  setTitulares] = useState([]);
   const [onField,    setOnField]   = useState([]);
   const [period,     setPeriod]    = useState(1);
@@ -822,6 +893,10 @@ function LiveMatch({ match, myPlayers, sanctions, setSanctions, onClose, onSave,
   const [scoreUs,    setUs]        = useState(0);
   const [scoreThem,  setThem]      = useState(0);
   const timerRef = useRef(null);
+  const startedAtRef = useRef(null); // timestamp real cuando arrancó el cronómetro
+  const secsAtPause  = useRef(0);    // segundos acumulados al pausar
+  const timerCdStartRef = useRef(null); // timestamp countdown
+  const timerCdSecsRef  = useRef(0);    // secs countdown al pausar
 
   // Collective direct fouls per period
   const [cfUs,   setCfUs]   = useState({ 1:0, 2:0 });
@@ -877,24 +952,94 @@ function LiveMatch({ match, myPlayers, sanctions, setSanctions, onClose, onSave,
   const tmUav  = !tm[period].us;
   const tmTav  = !tm[period].them;
 
+  // ── CRONÓMETRO RESILIENTE basado en timestamps reales ──────────────────────
   useEffect(() => {
     if (running) {
-      timerRef.current = setInterval(() => setSecs(s => s + 1), 1000);
+      // Guardar el momento en que arrancó
+      startedAtRef.current = Date.now();
+      timerRef.current = setInterval(() => {
+        const elapsed = Math.floor((Date.now() - startedAtRef.current) / 1000);
+        setSecs(secsAtPause.current + elapsed);
+      }, 500); // tick cada 500ms para más precisión
     } else {
       clearInterval(timerRef.current);
+      // Guardar los segundos al pausar
+      secsAtPause.current = secs;
+      startedAtRef.current = null;
     }
     return () => clearInterval(timerRef.current);
   }, [running]);
 
-  // Countdown en paralelo — corre solo si running y timerSecs > 0
+  // ── Countdown resiliente ─────────────────────────────────────────────────
   useEffect(() => {
     if (running && timerSecs !== null && timerSecs > 0) {
-      timerCdRef.current = setInterval(() => setTimerSecs(s => s > 0 ? s - 1 : 0), 1000);
+      timerCdStartRef.current = Date.now();
+      timerCdSecsRef.current  = timerSecs;
+      timerCdRef.current = setInterval(() => {
+        const elapsed = Math.floor((Date.now() - timerCdStartRef.current) / 1000);
+        const remaining = timerCdSecsRef.current - elapsed;
+        setTimerSecs(remaining > 0 ? remaining : 0);
+      }, 500);
     } else {
       clearInterval(timerCdRef.current);
     }
     return () => clearInterval(timerCdRef.current);
   }, [running, timerSecs !== null]);
+
+  // ── Recuperación al volver de otra app (visibilitychange) ───────────────
+  useEffect(() => {
+    function onVisibility() {
+      if (document.visibilityState === "visible" && running && startedAtRef.current) {
+        // Recalcular tiempo transcurrido desde que arrancó
+        const elapsed = Math.floor((Date.now() - startedAtRef.current) / 1000);
+        setSecs(secsAtPause.current + elapsed);
+        // Recalcular countdown si está activo
+        if (timerSecs !== null && timerCdStartRef.current) {
+          const cdElapsed = Math.floor((Date.now() - timerCdStartRef.current) / 1000);
+          const remaining = timerCdSecsRef.current - cdElapsed;
+          setTimerSecs(remaining > 0 ? remaining : 0);
+        }
+      }
+    }
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, [running, timerSecs]);
+
+  // Silbato cuando el cronómetro llega a 0
+  useEffect(() => {
+    if (timerSecs === 0) playWhistle();
+  }, [timerSecs]);
+
+  // Reportar estado al componente padre (para el banner minimizado)
+  useEffect(() => {
+    if (onStateChange) {
+      onStateChange({ secs, scoreUs, scoreThem, running });
+    }
+  }, [secs, scoreUs, scoreThem, running]);
+
+  // Silbato: tres pitidos usando Web Audio API
+  function playWhistle() {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const pitidos = [0, 0.35, 0.70]; // tiempos de inicio de cada pitido
+      pitidos.forEach(t => {
+        const osc  = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = "square";
+        osc.frequency.setValueAtTime(880, ctx.currentTime + t);
+        osc.frequency.setValueAtTime(1100, ctx.currentTime + t + 0.05);
+        gain.gain.setValueAtTime(0.5, ctx.currentTime + t);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + t + 0.28);
+        osc.start(ctx.currentTime + t);
+        osc.stop(ctx.currentTime + t + 0.3);
+      });
+      setTimeout(() => ctx.close(), 1500);
+    } catch(e) {
+      console.warn("Audio no disponible:", e);
+    }
+  }
 
   function addLog(type, txt, ico) {
     setEvents(e => [{ id: Date.now(), min: curMin, sec: curSec, period, type, txt, ico }, ...e]);
@@ -904,8 +1049,12 @@ function LiveMatch({ match, myPlayers, sanctions, setSanctions, onClose, onSave,
       const matchLabel = match?.home + " vs " + match?.away;
       const fullTxt = ico + " " + pad2(curMin) + "' — " + txt + " · " + matchLabel;
       if (!isDemoSession()) setDoc(doc(db, "notifs", id), {
-        id, txt: fullTxt, ts: new Date().toISOString(), read: false, link: "calendario",
-        live: true, matchId: match?.id || ""
+        id, txt: fullTxt, ts: new Date().toISOString(),
+        link: "calendario", live: true,
+        matchId: match?.id || "",
+        para: match?.cat ? "cat:" + match.cat : "all",
+        tipo: (type==="goal_us"||type==="goal_them") ? "gol" : "live",
+        readBy: {}
       });
     }
   }
@@ -1020,6 +1169,10 @@ function LiveMatch({ match, myPlayers, sanctions, setSanctions, onClose, onSave,
   function resetClock() {
     setRunning(false);
     setSecs(0);
+    secsAtPause.current      = 0;
+    startedAtRef.current     = null;
+    timerCdStartRef.current  = null;
+    timerCdSecsRef.current   = 0;
     setTimerSecs(null);
     setTimerInput("15");
     clearInterval(timerCdRef.current);
@@ -1303,6 +1456,83 @@ function LiveMatch({ match, myPlayers, sanctions, setSanctions, onClose, onSave,
               })}
             </div>
           )}
+          {/* ── Sección jugadores del rival ── */}
+          <div className="card" style={{ marginTop:8 }}>
+            <div className="ch">
+              <span className="ct" style={{ color:"#e8a0a0" }}>🔴 {match.away} — Jugadores rival</span>
+              <span className="bg bg-r">{rivalPlayers.length}</span>
+            </div>
+            <p style={{ fontSize:8.5, color:"#4e6a88", marginBottom:8 }}>
+              Registra los jugadores del equipo rival para poder asignarles goles y tarjetas durante el partido.
+            </p>
+
+            {/* Lista de jugadores rival ya agregados — usa el mismo estado rivals del live match */}
+            {rivals.map(r => (
+              <div key={r.num} style={{ display:"flex", alignItems:"center", gap:8,
+                padding:"7px 8px", marginBottom:5, borderRadius:8,
+                background:"rgba(229,57,53,.06)", border:"1px solid rgba(229,57,53,.15)" }}>
+                <div style={{ width:28, height:28, borderRadius:"50%", background:"rgba(229,57,53,.2)",
+                  display:"flex", alignItems:"center", justifyContent:"center",
+                  fontSize:11, fontWeight:700, color:"#e8a0a0", flexShrink:0 }}>
+                  {r.num}
+                </div>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontSize:10, fontWeight:600, color:"#e8a0a0" }}>{r.name || "Sin nombre"}</div>
+                  <div style={{ fontSize:7.5, color:"#4e6a88" }}>#{r.num} · {match.away}</div>
+                </div>
+                <button className="btn-sm" style={{ color:"#e8a0a0", padding:"2px 8px", fontSize:8 }}
+                  onClick={() => { setRivals(rv => rv.filter(x => x.num !== r.num)); setRivFouls(f => { const cf={...f}; delete cf[r.num]; return cf; }); }}>
+                  ✕
+                </button>
+              </div>
+            ))}
+
+            {/* Formulario inline para agregar jugador rival */}
+            {showRivalForm ? (
+              <div style={{ background:"rgba(229,57,53,.05)", borderRadius:8,
+                padding:"10px", border:"1px solid rgba(229,57,53,.12)" }}>
+                <div className="inp-2" style={{ marginBottom:8 }}>
+                  <div className="inp-wrap">
+                    <div className="inp-lbl">Nombre *</div>
+                    <input className="inp" placeholder="Nombre del jugador"
+                      value={rivalInput.nombre}
+                      onChange={e => setRivalInput(v => ({ ...v, nombre:e.target.value }))}/>
+                  </div>
+                  <div className="inp-wrap">
+                    <div className="inp-lbl">N° Camiseta *</div>
+                    <input className="inp" type="number" min="1" max="99" placeholder="10"
+                      value={rivalInput.num}
+                      onChange={e => setRivalInput(v => ({ ...v, num:e.target.value }))}/>
+                  </div>
+                </div>
+                <div style={{ display:"flex", gap:6 }}>
+                  <button className="btn-sm" onClick={() => { setShowRivalForm(false); setRivalInput({ nombre:"", num:"" }); }}>
+                    Cancelar
+                  </button>
+                  <button className="btn" style={{ flex:1, background:"rgba(229,57,53,.15)",
+                    border:"1px solid rgba(229,57,53,.3)", color:"#e8a0a0" }}
+                    onClick={() => {
+                      if (!rivalInput.nombre.trim()) return;
+                      const nNum = parseInt(rivalInput.num)||0;
+                      if (rivals.find(r => r.num === nNum)) { setRivalInput(v=>({...v,num:""})); return; }
+                      setRivals(rv => [...rv, { num:nNum, name:rivalInput.nombre.trim() }]);
+                      setRivalInput({ nombre:"", num:"" });
+                      setShowRivalForm(false);
+                    }}>
+                    ✅ Agregar
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button className="btn-sm" style={{ width:"100%", textAlign:"center",
+                background:"rgba(229,57,53,.08)", color:"#e8a0a0",
+                borderColor:"rgba(229,57,53,.2)", fontSize:9 }}
+                onClick={() => setShowRivalForm(true)}>
+                + Agregar jugador rival
+              </button>
+            )}
+          </div>
+
           <button className="btn" disabled={convocados.length < 5} onClick={() => setPhase("lineup")}>
             CONTINUAR → FORMACIÓN
           </button>
@@ -1527,6 +1757,17 @@ function LiveMatch({ match, myPlayers, sanctions, setSanctions, onClose, onSave,
   return (
     <div className="app">
       <div className="scoreboard">
+        {/* Botón minimizar — ir al admin sin cerrar el partido */}
+        {onMinimize && (
+          <div style={{ display:"flex", justifyContent:"flex-end", padding:"4px 8px 0" }}>
+            <button onClick={onMinimize}
+              style={{ background:"rgba(212,184,74,.15)", border:"1px solid rgba(212,184,74,.3)",
+                borderRadius:6, color:"#d4b84a", fontSize:8.5, fontWeight:600,
+                padding:"3px 10px", cursor:"pointer" }}>
+              ⬇ Minimizar
+            </button>
+          </div>
+        )}
         <div className="period-lbl">
           {running ? "● EN VIVO · " : "⏸ PAUSADO · "}
           {!extraTime
@@ -1640,6 +1881,8 @@ function LiveMatch({ match, myPlayers, sanctions, setSanctions, onClose, onSave,
             onClick={() => tmTav && setModal("tm_them")}
           >⏸ T.Muerto Rival</button>
           <button className="abtn abtn-full" onClick={() => setModal("sub")}>🔄 Cambio</button>
+          <button className="abtn abtn-full" style={{ background:"rgba(212,184,74,.15)", borderColor:"rgba(212,184,74,.3)", color:"#d4b84a" }}
+            onClick={() => setModal("add_player")}>👤 + Jugador</button>
         </div>
 
         <div className="card">
@@ -2015,6 +2258,30 @@ function LiveMatch({ match, myPlayers, sanctions, setSanctions, onClose, onSave,
               </>
             )}
 
+            {modal === "add_player" && (
+              <AddPlayerModal
+                match={match}
+                rivals={rivals}
+                myPlayers={myPlayers}
+                curMin={curMin}
+                onClose={closeModal}
+                onAddUs={(nombre, num) => {
+                  const tempId = "temp_" + Date.now();
+                  myPlayers.push({ id:tempId, nombre, apellido:"", num, cat:match.cat,
+                    col:"#1565C0", foto:null, stats:{goles:0,asistencias:0,partidos:0} });
+                  setConvocados(prev => [...prev, tempId]);
+                  setPStats(prev => ({ ...prev, [tempId]:{ goles:0, asistencias:0 } }));
+                  addLog("sub", nombre + " #" + num + " entra (RFC)", "👤");
+                  closeModal();
+                }}
+                onAddThem={(nombre, num) => {
+                  setRivals(rv => [...rv, { num, name:nombre }]);
+                  addLog("sub", nombre + " #" + num + " registrado (Rival)", "👤");
+                  closeModal();
+                }}
+              />
+            )}
+
             {modal === "sub" && (
               <>
                 <div className="mt2">🔄 Cambio · {curMin}' <span className="mx" onClick={closeModal}>✕</span></div>
@@ -2234,14 +2501,16 @@ export default function App() {
       const sw = await navigator.serviceWorker.register("/firebase-messaging-sw.js");
       const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: sw });
       if (token) {
-        // Guardamos el token en Firestore bajo la colección "fcm_tokens"
         const deviceId = token.slice(-20);
+        // Guardar token con info del usuario para filtrar notifs por categoría/rol
         await setDoc(doc(db, "fcm_tokens", deviceId), {
           token,
-          coach: user?.name || "desconocido",
-          coachId: user?.id || null,
+          nombre:    user?.name    || "desconocido",
+          role:      role          || "visitor",
+          playerId:  user?.playerId ? String(user.playerId) : null,
+          cat:       user?.cat     || "Todas",
           updatedAt: new Date().toISOString(),
-          platform: navigator.userAgent.includes("Android") ? "android" : "ios/web"
+          platform:  navigator.userAgent.includes("Android") ? "android" : "ios/web"
         });
       }
     } catch(e) {
@@ -2542,7 +2811,9 @@ export default function App() {
   const [trErr,        setTrErr]        = useState("");
   const [calVista,     setCalVista]     = useState("lista");
   const [exentoModal, setExentoModal] = useState(null);
-  const [selectedChildId, setSelectedChildId] = useState(null);
+  const [selectedChildId,  setSelectedChildId]  = useState(null);
+  const [liveMMinimized,   setLiveMMinimized]   = useState(false); // live match en segundo plano
+  const [liveState,        setLiveState]        = useState({ secs:0, scoreUs:0, scoreThem:0, running:false });
   const [bulkMode,      setBulkMode]      = useState(false);   // modo edición masiva
   const [bulkSel,       setBulkSel]       = useState([]);      // ids seleccionados
   const [bulkAction,    setBulkAction]    = useState("cat");   // "cat"|"uniforme"
@@ -2561,7 +2832,10 @@ export default function App() {
   // ── DERIVED ────────────────────────────────
   const isAdmin  = role === "admin";
   const can      = perm => isAdmin && user && Array.isArray(user.perms) && user.perms.includes(perm);
-  const unread   = notifs.filter(n => !n.read).length;
+  const unread   = notifs.filter(n => {
+    const uid = myUID ? myUID() : "admin_dt";
+    return !n.readBy?.[uid];
+  }).length;
 
   const filtP = players.filter(p => {
     const catOk  = !isAdmin || !user || user.cat === "Todas" || p.cat === user.cat;
@@ -2570,18 +2844,115 @@ export default function App() {
     return catOk && filt && srch;
   });
 
-  const filtM = matches.filter(m => {
-    const catOk = !user || user.cat === "Todas" || m.cat === user.cat;
-    const filt  = catF === "Todas" || m.cat === catF;
-    return catOk && filt;
-  });
+  const filtM = (() => {
+    // Inicio de la semana actual (lunes a las 00:00)
+    const hoy    = new Date();
+    const diaSem = hoy.getDay() === 0 ? 6 : hoy.getDay() - 1; // 0=lun..6=dom
+    const lunesActual = new Date(hoy);
+    lunesActual.setHours(0,0,0,0);
+    lunesActual.setDate(hoy.getDate() - diaSem);
+
+    function parseMatchDate(dateStr) {
+      if (!dateStr) return null;
+      // Formato ISO "2026-03-21"
+      if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr.trim())) {
+        const [y,mo,d] = dateStr.trim().split("-").map(Number);
+        return new Date(y, mo-1, d);
+      }
+      // Formato "21 Mar 2026" o "21 Mar"
+      const MESES = {Ene:0,Feb:1,Mar:2,Abr:3,May:4,Jun:5,Jul:6,Ago:7,Sep:8,Oct:9,Nov:10,Dic:11};
+      const parts = dateStr.trim().split(/\s+/);
+      if (parts.length >= 2) {
+        const dd = parseInt(parts[0]);
+        const mm = MESES[parts[1]];
+        const yy = parts[2] ? parseInt(parts[2]) : new Date().getFullYear();
+        if (!isNaN(dd) && mm !== undefined) return new Date(yy, mm, dd);
+      }
+      return null;
+    }
+
+    // Fin de la semana actual (domingo a las 23:59)
+    const domingoActual = new Date(lunesActual);
+    domingoActual.setDate(lunesActual.getDate() + 6);
+    domingoActual.setHours(23,59,59,999);
+
+    return matches
+      .filter(m => {
+        const catOk = !user || user.cat === "Todas" || m.cat === user.cat;
+        const filt  = catF === "Todas" || m.cat === catF;
+        if (!catOk || !filt) return false;
+        // Ocultar partidos finalizados de semanas anteriores (antes del lunes de esta semana)
+        if (m.status === "finalizado") {
+          const fd = parseMatchDate(m.date);
+          if (fd && fd < lunesActual) return false;
+        }
+        return true;
+      })
+      .sort((a, b) => {
+        // Orden cronológico puro — "en vivo" siempre primero
+        if (a.status === "en vivo" && b.status !== "en vivo") return -1;
+        if (b.status === "en vivo" && a.status !== "en vivo") return  1;
+        const da  = parseMatchDate(a.date);
+        const db_ = parseMatchDate(b.date);
+        if (da && db_) return da - db_;  // más antiguo primero
+        if (da && !db_) return -1;
+        if (!da && db_) return 1;
+        return 0;
+      });
+  })();
 
   const attCount = attSession ? filtP.filter(p => att[p.id] && att[p.id][attSession] && att[p.id][attSession].present).length : 0;
   const attPct   = filtP.length && attSession ? Math.round(attCount / filtP.length * 100) : 0;
 
-  function addNotif(txt, link = null) {
-    const id = String(Date.now());
-    if (!isDemo) setDoc(doc(db, "notifs", id), { id, txt, ts: new Date().toISOString(), read: false, link });
+  // para: "all" | "cat:Sub-15" | "player:ID"
+  function addNotif(txt, link = null, para = "all", tipo = "info") {
+    const id = "n_" + Date.now() + "_" + Math.random().toString(36).slice(2,6);
+    if (!isDemo) setDoc(doc(db, "notifs", id), {
+      id, txt,
+      ts:        new Date().toISOString(),
+      link:      link   || "inicio",
+      para:      para   || "all",
+      tipo:      tipo   || "info",
+      creadoPor: user?.name || "Sistema",
+      readBy:    {}   // { "playerId": true, "adminId": true }
+    });
+  }
+
+  // ¿Esta notif es para el usuario actual?
+  function notifEsPara(n) {
+    if (!n.para || n.para === "all") return true;
+    if (n.para.startsWith("cat:")) {
+      const cat = n.para.replace("cat:","");
+      return user?.cat === cat || user?.cat === "Todas";
+    }
+    if (n.para.startsWith("player:")) {
+      const pid = n.para.replace("player:","");
+      return String(user?.playerId) === pid ||
+             (user?.playerIds||[]).map(String).includes(pid);
+    }
+    return false;
+  }
+
+  // ID único del usuario actual (para marcar leídas)
+  function myUID() {
+    if (isAdmin) return "admin_" + (user?.id || "dt");
+    return String(user?.playerId || "visitor");
+  }
+
+  // Marcar notif como leída para el usuario actual
+  function markNotifRead(nid) {
+    if (isDemo) return;
+    const uid = myUID();
+    updateDoc(doc(db, "notifs", nid), { [`readBy.${uid}`]: true });
+  }
+
+  // Marcar todas como leídas
+  function markAllRead(lista) {
+    if (isDemo) return;
+    const uid = myUID();
+    lista.forEach(n => {
+      if (!n.readBy?.[uid]) updateDoc(doc(db,"notifs",n.id), { [`readBy.${uid}`]: true });
+    });
   }
 
   // ── DEMO SAFE WRAPPERS ─────────────────────
@@ -3148,7 +3519,7 @@ export default function App() {
     setCsvImporting(false);
     setShowCsvImport(false);
     setCsvPreview([]);
-    addNotif("✅ " + csvPreview.length + " jugadores importados", "jugadores");
+    addNotif("✅ " + csvPreview.length + " jugadores importados", "jugadores", "all", "info");
   }
 
   function savePlayer() {
@@ -3158,7 +3529,7 @@ export default function App() {
       const ref = doc(db, "players", String(editPid));
       const data = { ...np, num: parseInt(np.num)||0, col: CAT_COLOR[np.cat]||"#1565C0" };
       safeSetDoc(ref, data);
-      addNotif("Jugador actualizado: " + np.nombre + " " + np.apellido, "jugadores");
+      addNotif("✏️ Jugador actualizado: " + np.nombre + " " + np.apellido, "jugadores", "player:"+np.id, "info");
       setAddOk(true); setFormErr("");
       setTimeout(() => { setAddOk(false); setShowAdd(false); setEditPid(null); setNp(NP_BLANK); }, 1500);
     } else {
@@ -3169,7 +3540,7 @@ export default function App() {
       safeSetDoc(doc(db, "pay",  id), initP);
       safeSetDoc(doc(db, "sanc", id), { yellows:0, reds:0, suspended:false, history:[] });
       safeSetDoc(doc(db, "att",  id), {});
-      addNotif("Nuevo jugador: " + np.nombre + " " + np.apellido + " (" + np.cat + ")", "jugadores");
+      addNotif("👤 Nuevo jugador: " + np.nombre + " " + np.apellido + " (" + np.cat + ")", "jugadores", "cat:"+np.cat, "info");
       setAddOk(true); setFormErr("");
       setNewPlayerWA({ nombre: np.nombre, apellido: np.apellido, cedula: np.cedula, tel: np.tel, repNombre: np.repNombre, repApellido: np.repApellido, repCedula: np.repCedula, repTel: np.repTel });
       setNp(NP_BLANK);
@@ -3181,13 +3552,13 @@ export default function App() {
     if (!nm.away || !nm.date || !nm.time || !nm.field) { setFormErr("Completa todos los campos"); return; }
     if (editMid) {
       safeSetDoc(doc(db, "matches", editMid), { ...nm });
-      addNotif("Partido actualizado: " + nm.home + " vs " + nm.away, "calendario");
+      addNotif("🔄 Partido reprogramado: " + nm.home + " vs " + nm.away + " · " + nm.date, "calendario", "cat:"+nm.cat, "partido");
       setEditMid(null);
     } else {
       const id = String(Date.now());
       const m  = { ...nm, id, scoreH:null, scoreA:null, status:"próximo" };
       safeSetDoc(doc(db, "matches", id), m);
-      addNotif("Partido: " + nm.home + " vs " + nm.away + " · " + nm.cat + " · " + nm.date, "calendario");
+      addNotif("📅 Partido: " + nm.home + " vs " + nm.away + " · " + nm.date, "calendario", "cat:"+nm.cat, "partido");
     }
     setNm({ home:"Rómulo FC", away:"", date:"", time:"", cat:"Sub-11", field:"", champId:"", fase:"Normal" });
     setShowMForm(false); setFormErr("");
@@ -3264,6 +3635,8 @@ export default function App() {
       const u = { name: p.nombre + " " + p.apellido, playerId: p.id, cat: p.cat, perms:[] };
       setUser(u); setLoggedIn(true);
       sessionStorage.setItem("rfc_session", JSON.stringify({ role:"player", user:u }));
+      // Registrar token FCM automáticamente para recibir notificaciones push
+      setTimeout(() => registerFCMToken(), 1000);
     } else if (role === "parent") {
       const normCI = v => v ? v.trim().toUpperCase().replace(/\s/g,"").replace(/^[VEJPG]-?/,"") : "";
       const clean = normCI(lid);
@@ -3306,16 +3679,21 @@ export default function App() {
       if (aPropio !== bPropio) return aPropio - bPropio;
       return CATS_ORDER.indexOf(a.cat) - CATS_ORDER.indexOf(b.cat);
     });
-    return (
-      <>
-        <style>{CSS}</style>
-        <LiveMatch
-          match={liveM}
-          myPlayers={myPlayers}
-          sanctions={sanc}
-          setSanctions={setSanc}
-          minET={champs.find(c => c.id === liveM.champId)?.minET || 5}
-          onClose={() => setLiveM(null)}
+    // Si está minimizado, mostramos el admin con banner flotante
+    if (liveMMinimized) {
+      // Continuar con el renderizado normal del admin (no hacer return aquí)
+    } else {
+      return (
+        <>
+          <style>{CSS}</style>
+          <LiveMatch
+            match={liveM}
+            myPlayers={myPlayers}
+            sanctions={sanc}
+            setSanctions={setSanc}
+            minET={champs.find(c => c.id === liveM.champId)?.minET || 5}
+            onClose={() => { setLiveM(null); setLiveMMinimized(false); }}
+            onMinimize={() => setLiveMMinimized(true)}
           onSave={r => {
             // Guardar resultado en Firebase
             const matchData = { ...liveM, scoreH:r.scoreH, scoreA:r.scoreA, status:"finalizado",
@@ -3419,6 +3797,14 @@ export default function App() {
               safeSetDoc(doc(db,"matches",String(liveM.id)), matchData2);
             }
 
+            // ── Notificación de resultado a la categoría ──
+            const res = r.scoreH > r.scoreA ? "VICTORIA" : r.scoreH < r.scoreA ? "DERROTA" : "EMPATE";
+            const emojRes = res==="VICTORIA"?"🏆":res==="DERROTA"?"😔":"🤝";
+            addNotif(
+              emojRes + " " + res + " · " + liveM.home + " " + r.scoreH + "-" + r.scoreA + " " + liveM.away,
+              "calendario", "cat:"+liveM.cat, "resultado"
+            );
+
             // ── Guardar resultado final para el resumen post-partido ──
             setLastMatchResult({ match: liveM, r });
             setLiveM(null);
@@ -3492,6 +3878,7 @@ export default function App() {
         <ConfirmDialog cfg={conf} onClose={() => setConf(null)} />
       </>
     );
+    } // fin if !liveMMinimized
   }
 
   // ── LOGIN ──────────────────────────────────
@@ -3687,8 +4074,17 @@ export default function App() {
 
     // Partidos: jugador/rep ven su categoría, visitante ve todos
     const spM       = spCat ? matches.filter(m => m.cat === spCat) : matches;
-    const nextM     = spM.filter(m => m.status === "próximo");
-    const pastM     = spM.filter(m => m.status === "finalizado");
+    // Semana actual para filtrar finalizados viejos
+    const _hoyS   = new Date();
+    const _diaS   = _hoyS.getDay()===0?6:_hoyS.getDay()-1;
+    const _lunesS = new Date(_hoyS); _lunesS.setHours(0,0,0,0); _lunesS.setDate(_hoyS.getDate()-_diaS);
+    function _pmd(ds){ if(!ds)return null; if(/^\d{4}-\d{2}-\d{2}$/.test(ds.trim())){const[y,mo,d]=ds.trim().split("-").map(Number);return new Date(y,mo-1,d);} const MS={Ene:0,Feb:1,Mar:2,Abr:3,May:4,Jun:5,Jul:6,Ago:7,Sep:8,Oct:9,Nov:10,Dic:11};const ps=ds.trim().split(/\s+/);if(ps.length>=2){const dd=parseInt(ps[0]),mm=MS[ps[1]],yy=ps[2]?parseInt(ps[2]):new Date().getFullYear();if(!isNaN(dd)&&mm!==undefined)return new Date(yy,mm,dd);}return null;}
+    const nextM = spM
+      .filter(m => m.status === "próximo" || m.status === "en vivo")
+      .sort((a,b) => { const da=_pmd(a.date),db=_pmd(b.date); return da&&db?da-db:0; });
+    const pastM = spM
+      .filter(m => { if(m.status!=="finalizado")return false; const fd=_pmd(m.date); return !fd||fd>=_lunesS; })
+      .sort((a,b) => { const da=_pmd(a.date),db=_pmd(b.date); return da&&db?da-db:0; });
 
     // Campeonatos: jugador/rep ven los de su categoría, visitante ve todos
     const spChamps  = spCat
@@ -4526,6 +4922,26 @@ export default function App() {
               </div>
               <div className="hdr-right">
                 <span className="badge badge-b">{roleBadge}</span>
+                {/* Campana de notificaciones espectador */}
+                {!isVisitor && (() => {
+                  const misNotifs = notifs.filter(n => notifEsPara(n));
+                  const uid = myUID();
+                  const noLeidas = misNotifs.filter(n => !n.readBy?.[uid]).length;
+                  return (
+                    <div style={{ position:"relative", cursor:"pointer" }}
+                      onClick={() => setShowNotif(v => !v)}>
+                      <div className="ico-btn">🔔</div>
+                      {noLeidas > 0 && (
+                        <div style={{ position:"absolute", top:-2, right:-2, minWidth:14, height:14,
+                          background:"#E53935", borderRadius:7, fontSize:7.5, fontWeight:700,
+                          color:"#fff", display:"flex", alignItems:"center", justifyContent:"center",
+                          padding:"0 3px", lineHeight:1 }}>
+                          {noLeidas > 9 ? "9+" : noLeidas}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
                 <div className="ico-btn" onClick={logout} title="Salir">🚪</div>
               </div>
             </div>
@@ -4535,6 +4951,73 @@ export default function App() {
               ))}
             </div>
           </div>
+          {/* Panel notificaciones espectador */}
+          {showNotif && !isVisitor && (() => {
+            const misNotifs = notifs.filter(n => notifEsPara(n))
+              .sort((a,b) => (b.ts||"").localeCompare(a.ts||""))
+              .slice(0, 30);
+            const uid = myUID();
+            return (
+              <div style={{ position:"absolute", top:64, right:8, width:"calc(100% - 16px)",
+                maxWidth:360, background:"#06091a", border:"1px solid rgba(33,150,243,.2)",
+                borderRadius:12, zIndex:900, boxShadow:"0 8px 32px rgba(0,0,0,.5)",
+                maxHeight:"70vh", display:"flex", flexDirection:"column" }}>
+                {/* Header */}
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center",
+                  padding:"10px 14px", borderBottom:"1px solid rgba(255,255,255,.05)" }}>
+                  <span style={{ fontSize:10, fontWeight:700, color:"#7ab3e0" }}>🔔 Notificaciones</span>
+                  <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+                    <button className="btn-sm" style={{ fontSize:7.5, padding:"2px 8px" }}
+                      onClick={() => markAllRead(misNotifs)}>
+                      ✓ Marcar leídas
+                    </button>
+                    <span style={{ cursor:"pointer", color:"#4e6a88", fontSize:16 }}
+                      onClick={() => setShowNotif(false)}>✕</span>
+                  </div>
+                </div>
+                {/* Lista */}
+                <div style={{ overflowY:"auto", flex:1 }}>
+                  {misNotifs.length === 0 && (
+                    <div style={{ padding:"20px 14px", textAlign:"center", fontSize:9, color:"#3a5068" }}>
+                      Sin notificaciones
+                    </div>
+                  )}
+                  {misNotifs.map(n => {
+                    const leida = !!(n.readBy?.[uid]);
+                    const tipoColor = {
+                      gol:       "#d4b84a",
+                      resultado: "#2196F3",
+                      partido:   "#7ab3e0",
+                      live:      "#E53935",
+                      campeonato:"#d4b84a",
+                    }[n.tipo] || "#4e6a88";
+                    const ts = n.ts ? new Date(n.ts).toLocaleString("es",{
+                      day:"numeric", month:"short", hour:"2-digit", minute:"2-digit"}) : "";
+                    return (
+                      <div key={n.id}
+                        onClick={() => { markNotifRead(n.id); setShowNotif(false); setTab(n.link||"inicio"); }}
+                        style={{ display:"flex", gap:8, padding:"10px 14px", cursor:"pointer",
+                          background: leida ? "transparent" : "rgba(33,150,243,.04)",
+                          borderBottom:"1px solid rgba(255,255,255,.03)",
+                          borderLeft: leida ? "3px solid transparent" : "3px solid "+tipoColor }}>
+                        <div style={{ flex:1 }}>
+                          <div style={{ fontSize:9.5, color: leida?"#4e6a88":"#c0cfe0", lineHeight:1.4 }}>
+                            {n.txt}
+                          </div>
+                          <div style={{ fontSize:7.5, color:"#3a5068", marginTop:3 }}>{ts}</div>
+                        </div>
+                        {!leida && (
+                          <div style={{ width:7, height:7, borderRadius:"50%",
+                            background:tipoColor, flexShrink:0, marginTop:4 }}/>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
+
           {/* Banner actualización espectador */}
           {swUpdate && (
             <div style={{ background:"rgba(21,101,192,.18)", borderBottom:"1px solid rgba(33,150,243,.35)",
@@ -7655,7 +8138,7 @@ export default function App() {
         safeSetDoc(doc(db, "champs", id), { ...nc, id, nombre: nc.nombre.trim(), standings:[], fase:"grupos", llaves:[] });
         setNc({ nombre:"", cats:[], activo:true, link:"", minET:5 });
         setShowCForm(false); setFormErr("");
-        addNotif("Nuevo campeonato: " + nc.nombre.trim(), "champs");
+        addNotif("🏆 Nuevo campeonato: " + nc.nombre.trim() + " · " + (nc.cats||[]).join(", "), "campeonatos", "all", "campeonato");
       }
       function toggleChampActive(id) {
         const ch = champs.find(c => c.id === id);
@@ -8549,6 +9032,36 @@ export default function App() {
           </div>
         )}
 
+        {/* ── Banner Live Match minimizado ── */}
+        {liveM && liveMMinimized && (() => {
+          // Calcular marcador y tiempo actual
+          const liveScore = liveM;
+          return (
+            <div style={{ background:"rgba(229,57,53,.12)", borderBottom:"1px solid rgba(229,57,53,.35)",
+              padding:"8px 14px", display:"flex", alignItems:"center", gap:10, zIndex:999,
+              cursor:"pointer" }}
+              onClick={() => setLiveMMinimized(false)}>
+              <div style={{ width:10, height:10, borderRadius:"50%", background:"#E53935",
+                animation:"livePulse 1s ease-in-out infinite", flexShrink:0 }}/>
+              <div style={{ flex:1 }}>
+                <div style={{ fontSize:9.5, fontWeight:700, color:"#e8a0a0" }}>
+                  🔴 EN VIVO — {liveM.home} vs {liveM.away}
+                </div>
+                <div style={{ fontSize:8, color:"#4e6a88", marginTop:1 }}>
+                  {liveM.cat} · Toca para volver al partido
+                </div>
+              </div>
+              <button
+                onClick={e => { e.stopPropagation(); setLiveMMinimized(false); }}
+                style={{ background:"#E53935", border:"none", borderRadius:8, color:"#fff",
+                  fontSize:9, fontWeight:600, padding:"6px 12px", cursor:"pointer", flexShrink:0 }}>
+                ▶ Volver
+              </button>
+            </div>
+          );
+        })()}
+        <style>{`@keyframes livePulse { 0%,100%{opacity:1} 50%{opacity:.3} }`}</style>
+
         {/* ── Banner de actualización disponible ── */}
         {swUpdate && (
           <div style={{ background:"rgba(21,101,192,.18)", borderBottom:"1px solid rgba(33,150,243,.35)",
@@ -8574,6 +9087,39 @@ export default function App() {
             </button>
           </div>
         )}
+
+        {/* ── Banner Live Match minimizado ── */}
+        {liveM && liveMMinimized && (() => {
+          const liveSecs = secs; // viene del estado del LiveMatch via closure
+          const liveMin  = Math.floor(liveSecs / 60);
+          const liveSec2 = liveSecs % 60;
+          const pad = n => String(n).padStart(2,"0");
+          return (
+            <div style={{ background:"rgba(183,28,28,.18)", borderBottom:"2px solid #E53935",
+              padding:"8px 14px", display:"flex", alignItems:"center", gap:10, zIndex:100 }}>
+              {/* Indicador en vivo parpadeante */}
+              <div style={{ width:8, height:8, borderRadius:"50%", background:"#E53935",
+                flexShrink:0, animation:"liveBlink 1s ease-in-out infinite" }}/>
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ fontSize:9.5, fontWeight:700, color:"#e8a0a0", whiteSpace:"nowrap",
+                  overflow:"hidden", textOverflow:"ellipsis" }}>
+                  🔴 EN VIVO · {liveM.home} vs {liveM.away}
+                </div>
+                <div style={{ fontSize:8, color:"#b05060", marginTop:1 }}>
+                  {running ? "⏱ " : "⏸ "}{pad(liveMin)}:{pad(liveSec2)} · {liveM.cat}
+                  {scoreUs !== undefined ? " · " + scoreUs + "–" + scoreThem : ""}
+                </div>
+              </div>
+              <button
+                onClick={() => setLiveMMinimized(false)}
+                style={{ background:"#B71C1C", border:"none", borderRadius:8, color:"#fff",
+                  fontSize:9, fontWeight:700, padding:"6px 12px", cursor:"pointer",
+                  flexShrink:0, letterSpacing:.5 }}>
+                ▶ Volver
+              </button>
+            </div>
+          );
+        })()}
 
         <div className="cnt">
           {renderAdminContent()}
@@ -9787,7 +10333,7 @@ export default function App() {
               <button className="btn" style={{ flex:1, background:"rgba(183,28,28,.2)", borderColor:"rgba(183,28,28,.4)", color:"#ef9a9a" }}
                 onClick={() => {
                   safeDeleteDoc(doc(db, "matches", confirmDelM.id));
-                  addNotif("Partido eliminado: " + confirmDelM.home + " vs " + confirmDelM.away, "calendario");
+                  addNotif("🗑️ Partido eliminado: " + confirmDelM.home + " vs " + confirmDelM.away, "calendario", "cat:"+(confirmDelM.cat||"all"), "partido");
                   setConfirmDelM(null);
                 }}>
                 🗑️ Eliminar
