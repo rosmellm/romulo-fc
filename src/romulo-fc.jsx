@@ -13,76 +13,6 @@ const ACTIVE_MONTHS = MONTHS.slice(0, Math.max(1, _mesIdx + 1));
 const MES_COBRO = ACTIVE_MONTHS[ACTIVE_MONTHS.length - 1];
 const CATS   = ["Sub-11","Sub-13","Sub-15","Sub-17","Sub-19"];
 
-const DEMO_PLAYERS = [
-  { id:9001, nombre:"Carlos",   apellido:"Rodríguez", cat:"Sub-15", num:10, tel:"04140000001", repNombre:"Pedro",  repApellido:"Rodríguez", repTel:"04140000002", repCedula:"V-99000001", cedula:"V-88000001", dob:"2010-03-15", foto:null, stats:{ goles:8, asistencias:5, partidos:12 }, subequipo:"A", talla:"M", tipoSangre:"O+", contactoEmergencia:"Pedro Rodríguez 04140000002", eval:{ velocidad:8, tecnica:9, tactica:7, fisico:8, actitud:9, trabajo:9 } },
-  { id:9002, nombre:"Andrés",   apellido:"Martínez",  cat:"Sub-13", num:7,  tel:"04140000003", repNombre:"Ana",    repApellido:"Martínez",  repTel:"04140000004", repCedula:"V-99000003", cedula:"V-88000003", dob:"2012-06-22", foto:null, stats:{ goles:4, asistencias:7, partidos:10 }, subequipo:"B", talla:"S", tipoSangre:"A+", contactoEmergencia:"Ana Martínez 04140000004",    eval:{ velocidad:7, tecnica:8, tactica:8, fisico:6, actitud:8, trabajo:9 } },
-  { id:9003, nombre:"Luis",     apellido:"García",    cat:"Sub-17", num:1,  tel:"04140000005", repNombre:"María",  repApellido:"García",    repTel:"04140000006", repCedula:"V-99000005", cedula:"V-88000005", dob:"2008-11-08", foto:null, stats:{ goles:0, asistencias:2, partidos:14 }, subequipo:"A", talla:"L", tipoSangre:"B+", contactoEmergencia:"María García 04140000006",   eval:{ velocidad:6, tecnica:7, tactica:9, fisico:9, actitud:7, trabajo:8 } },
-  { id:9004, nombre:"Miguel",   apellido:"Torres",    cat:"Sub-15", num:5,  tel:"04140000007", repNombre:"Jorge",  repApellido:"Torres",    repTel:"04140000008", repCedula:"V-99000007", cedula:"V-88000007", dob:"2010-08-20", foto:null, stats:{ goles:5, asistencias:3, partidos:11 }, subequipo:"A", talla:"M", tipoSangre:"AB+", contactoEmergencia:"Jorge Torres 04140000008",  eval:{ velocidad:9, tecnica:7, tactica:6, fisico:9, actitud:8, trabajo:7 } },
-  { id:9005, nombre:"Gabriela", apellido:"Vega",      cat:"Sub-11", num:3,  tel:"04140000009", repNombre:"Carmen", repApellido:"Vega",      repTel:"04140000010", repCedula:"V-99000009", cedula:"V-88000009", dob:"2014-01-10", foto:null, stats:{ goles:2, asistencias:4, partidos:8  }, subequipo:"B", talla:"XS", tipoSangre:"O-", contactoEmergencia:"Carmen Vega 04140000010",   eval:{ velocidad:7, tecnica:6, tactica:5, fisico:6, actitud:10, trabajo:9 } },
-];
-
-const DEMO_MATCHES = [
-  { id:8001, home:"Rómulo FC", away:"Deportivo Carabobo", date:"10 Mar 2026", time:"10:00", cat:"Sub-15", field:"Campo A", status:"finalizado", scoreH:3, scoreA:1, fase:"Normal", playerStats:{ 9001:{ goles:2, asistencias:1 }, 9004:{ goles:1, asistencias:0 } }, mvp:{ playerId:9001, nombre:"Carlos", apellido:"Rodríguez" } },
-  { id:8002, home:"Rómulo FC", away:"Atlético Valencia",  date:"05 Mar 2026", time:"15:00", cat:"Sub-15", field:"Campo B", status:"finalizado", scoreH:1, scoreA:1, fase:"Normal", playerStats:{ 9001:{ goles:0, asistencias:1 }, 9004:{ goles:1, asistencias:0 } }, mvp:{ playerId:9004, nombre:"Miguel", apellido:"Torres" } },
-  { id:8003, home:"Rómulo FC", away:"Carabobo FC Sub-15", date:"20 Mar 2026", time:"09:00", cat:"Sub-15", field:"Campo A", status:"próximo", scoreH:null, scoreA:null, fase:"Normal" },
-  { id:8004, home:"Rómulo FC", away:"Escuela Cruz Diez",  date:"08 Mar 2026", time:"11:00", cat:"Sub-13", field:"Campo C", status:"finalizado", scoreH:2, scoreA:0, fase:"Normal", playerStats:{ 9002:{ goles:1, asistencias:1 } }, mvp:{ playerId:9002, nombre:"Andrés", apellido:"Martínez" } },
-  { id:8005, home:"Rómulo FC", away:"Mineros de Guayana", date:"22 Mar 2026", time:"16:00", cat:"Sub-13", field:"Campo B", status:"próximo", scoreH:null, scoreA:null, fase:"Normal" },
-  { id:8006, home:"Rómulo FC", away:"Deportivo Lara",     date:"01 Mar 2026", time:"10:00", cat:"Sub-17", field:"Campo A", status:"finalizado", scoreH:0, scoreA:2, fase:"Normal", playerStats:{ 9003:{ goles:0, asistencias:0 } }, mvp:null },
-];
-
-const DEMO_PAY = {
-  9001: { id:9001, months:{ Ene:{ paid:true, monto:"30", metodo:"Efectivo Bs.", date:"05 Ene" }, Feb:{ paid:true, monto:"30", metodo:"Zelle", date:"03 Feb" }, Mar:{ paid:false } }, history:[], arbitraje:[] },
-  9002: { id:9002, months:{ Ene:{ paid:true, monto:"30", metodo:"Efectivo Bs.", date:"04 Ene" }, Feb:{ paid:false }, Mar:{ paid:false } }, history:[], arbitraje:[] },
-  9003: { id:9003, months:{ Ene:{ paid:true, monto:"30", metodo:"Binance", date:"02 Ene" }, Feb:{ paid:true, monto:"30", metodo:"Binance", date:"01 Feb" }, Mar:{ paid:true, monto:"30", metodo:"Binance", date:"01 Mar" } }, history:[], arbitraje:[] },
-  9004: { id:9004, months:{ Ene:{ paid:true, monto:"30", metodo:"Efectivo Bs.", date:"06 Ene" }, Feb:{ paid:false }, Mar:{ paid:false } }, history:[], arbitraje:[] },
-  9005: { id:9005, months:{ Ene:{ paid:false }, Feb:{ paid:false }, Mar:{ paid:false } }, history:[], arbitraje:[] },
-};
-
-const DEMO_ATT = {
-  9001: { "Lun 02 Mar":{ present:true }, "Mié 04 Mar":{ present:true }, "Vie 06 Mar":{ present:false }, "Lun 09 Mar":{ present:true } },
-  9002: { "Lun 02 Mar":{ present:true }, "Mié 04 Mar":{ present:false }, "Vie 06 Mar":{ present:true }, "Lun 09 Mar":{ present:true } },
-  9003: { "Lun 02 Mar":{ present:true }, "Mié 04 Mar":{ present:true }, "Vie 06 Mar":{ present:true }, "Lun 09 Mar":{ present:true } },
-  9004: { "Lun 02 Mar":{ present:false }, "Mié 04 Mar":{ present:true }, "Vie 06 Mar":{ present:true }, "Lun 09 Mar":{ present:false } },
-  9005: { "Lun 02 Mar":{ present:true }, "Mié 04 Mar":{ present:true }, "Vie 06 Mar":{ present:false }, "Lun 09 Mar":{ present:true } },
-};
-
-const DEMO_SANC = {
-  9001:{ id:9001, yellows:1, reds:0, suspended:false },
-  9002:{ id:9002, yellows:2, reds:0, suspended:false },
-  9003:{ id:9003, yellows:0, reds:0, suspended:false },
-  9004:{ id:9004, yellows:0, reds:1, suspended:true  },
-  9005:{ id:9005, yellows:1, reds:0, suspended:false },
-};
-
-const DEMO_ATT_MATCHES = [
-  { matchId:8001, date:"10 Mar 2026", cat:"Sub-15", home:"Rómulo FC", away:"Deportivo Carabobo", convocados:[9001,9004], titulares:[9001,9004], mvp:{ playerId:9001 } },
-  { matchId:8002, date:"05 Mar 2026", cat:"Sub-15", home:"Rómulo FC", away:"Atlético Valencia",  convocados:[9001,9004], titulares:[9001],       mvp:{ playerId:9004 } },
-];
-
-const DEMO_CHAMPS = [
-  { id:7001, nombre:"Copa Rómulo FC 2026", cats:["Sub-15","Sub-13"], activo:true, fase:"grupos",
-    grupos:[{ nombre:"Grupo A", equipos:["Rómulo FC","Deportivo Carabobo","Atlético Valencia","Escuela Cruz Diez"] }],
-    standings:[
-      { equipo:"Rómulo FC",            pj:2, g:1, e:1, p:0, gf:4, gc:2, pts:4, dg:2 },
-      { equipo:"Deportivo Carabobo",   pj:2, g:1, e:0, p:1, gf:3, gc:3, pts:3, dg:0 },
-      { equipo:"Atlético Valencia",    pj:2, g:0, e:1, p:1, gf:2, gc:4, pts:1, dg:-2 },
-    ] },
-];
-
-const DEMO_TRAININGS = [
-  { id:"6001", fecha:"2026-03-16", hora:"17:00", lugar:"Campo A", cats:["Sub-15"], tema:"Definición y finalización", notas:"Traer peto azul" },
-  { id:"6002", fecha:"2026-03-18", hora:"17:00", lugar:"Campo A", cats:["Sub-15"], tema:"Pases en velocidad",        notas:"" },
-  { id:"6003", fecha:"2026-03-20", hora:"17:00", lugar:"Campo B", cats:["Sub-15"], tema:"Táctica defensiva",         notas:"Trabajo físico" },
-  { id:"6004", fecha:"2026-03-16", hora:"16:00", lugar:"Campo C", cats:["Sub-13"], tema:"Control de balón",          notas:"" },
-  { id:"6005", fecha:"2026-03-19", hora:"16:00", lugar:"Campo C", cats:["Sub-13"], tema:"Juego posicional",          notas:"" },
-  { id:"6006", fecha:"2026-03-10", hora:"17:00", lugar:"Campo A", cats:["Sub-15"], tema:"Resistencia aeróbica",      notas:"" },
-  { id:"6007", fecha:"2026-03-07", hora:"17:00", lugar:"Campo A", cats:["Sub-15"], tema:"Transiciones",              notas:"" },
-];
-
-const DEMO_COACHES = [
-  { id:1, name:"Rómulo García", role:"Director Técnico", cat:"Todas", pin:"1111", perms:["inicio","jugadores","asistencia","pagos","calendario","entrenamientos","campeonatos","uniformes","chat","stats","entrenadores","config","partido"] },
-  { id:2, name:"Carlos Mendez", role:"Entrenador Sub-15", cat:"Sub-15", pin:"2222", perms:["inicio","jugadores","asistencia","pagos","calendario","entrenamientos","campeonatos","uniformes","chat","stats","partido"] },
-];
 // Rangos de edad por categoría — se actualizan automáticamente cada año
 // Base: 2026 → Sub-11: 2016-2017, Sub-13: 2014-2015, Sub-15: 2012-2013, Sub-17: 2010-2011, Sub-19: 2008-2009
 const BASE_YEAR = 2026;
@@ -2628,15 +2558,60 @@ export default function App() {
   useEffect(() => {
     // Si es modo demo, cargar datos ficticios y no conectar a Firebase
     if (_demoCheck) {
-      setPlayers(DEMO_PLAYERS);
-      setPay(DEMO_PAY);
-      setSanc(DEMO_SANC);
-      setAtt(DEMO_ATT);
-      setCoaches(DEMO_COACHES);
-      setMatches(DEMO_MATCHES);
-      setChamps(DEMO_CHAMPS);
-      setTrainings(DEMO_TRAININGS);
-      setAttMatches(DEMO_ATT_MATCHES);
+      const DP = [
+        { id:9001, nombre:"Carlos",   apellido:"Rodríguez", cat:"Sub-15", num:10, tel:"04140000001", repNombre:"Pedro",  repApellido:"Rodríguez", repTel:"04140000002", repCedula:"V-99000001", cedula:"V-88000001", dob:"2010-03-15", foto:null, stats:{ goles:8, asistencias:5, partidos:12 }, subequipo:"A", talla:"M", tipoSangre:"O+", contactoEmergencia:"Pedro Rodríguez 04140000002", eval:{ velocidad:8, tecnica:9, tactica:7, fisico:8, actitud:9, trabajo:9 } },
+        { id:9002, nombre:"Andrés",   apellido:"Martínez",  cat:"Sub-13", num:7,  tel:"04140000003", repNombre:"Ana",    repApellido:"Martínez",  repTel:"04140000004", repCedula:"V-99000003", cedula:"V-88000003", dob:"2012-06-22", foto:null, stats:{ goles:4, asistencias:7, partidos:10 }, subequipo:"B", talla:"S", tipoSangre:"A+", contactoEmergencia:"Ana Martínez 04140000004",    eval:{ velocidad:7, tecnica:8, tactica:8, fisico:6, actitud:8, trabajo:9 } },
+        { id:9003, nombre:"Luis",     apellido:"García",    cat:"Sub-17", num:1,  tel:"04140000005", repNombre:"María",  repApellido:"García",    repTel:"04140000006", repCedula:"V-99000005", cedula:"V-88000005", dob:"2008-11-08", foto:null, stats:{ goles:0, asistencias:2, partidos:14 }, subequipo:"A", talla:"L", tipoSangre:"B+", contactoEmergencia:"María García 04140000006",   eval:{ velocidad:6, tecnica:7, tactica:9, fisico:9, actitud:7, trabajo:8 } },
+        { id:9004, nombre:"Miguel",   apellido:"Torres",    cat:"Sub-15", num:5,  tel:"04140000007", repNombre:"Jorge",  repApellido:"Torres",    repTel:"04140000008", repCedula:"V-99000007", cedula:"V-88000007", dob:"2010-08-20", foto:null, stats:{ goles:5, asistencias:3, partidos:11 }, subequipo:"A", talla:"M", tipoSangre:"AB+", contactoEmergencia:"Jorge Torres 04140000008",  eval:{ velocidad:9, tecnica:7, tactica:6, fisico:9, actitud:8, trabajo:7 } },
+        { id:9005, nombre:"Gabriela", apellido:"Vega",      cat:"Sub-11", num:3,  tel:"04140000009", repNombre:"Carmen", repApellido:"Vega",      repTel:"04140000010", repCedula:"V-99000009", cedula:"V-88000009", dob:"2014-01-10", foto:null, stats:{ goles:2, asistencias:4, partidos:8  }, subequipo:"B", talla:"XS", tipoSangre:"O-", contactoEmergencia:"Carmen Vega 04140000010",   eval:{ velocidad:7, tecnica:6, tactica:5, fisico:6, actitud:10, trabajo:9 } },
+      ];
+      const DM = [
+        { id:8001, home:"Rómulo FC", away:"Deportivo Carabobo", date:"10 Mar 2026", time:"10:00", cat:"Sub-15", field:"Campo A", status:"finalizado", scoreH:3, scoreA:1, fase:"Normal", playerStats:{ 9001:{ goles:2, asistencias:1 }, 9004:{ goles:1, asistencias:0 } }, mvp:{ playerId:9001, nombre:"Carlos", apellido:"Rodríguez" } },
+        { id:8002, home:"Rómulo FC", away:"Atlético Valencia",  date:"05 Mar 2026", time:"15:00", cat:"Sub-15", field:"Campo B", status:"finalizado", scoreH:1, scoreA:1, fase:"Normal", playerStats:{ 9001:{ goles:0, asistencias:1 }, 9004:{ goles:1, asistencias:0 } }, mvp:{ playerId:9004, nombre:"Miguel", apellido:"Torres" } },
+        { id:8003, home:"Rómulo FC", away:"Carabobo FC Sub-15", date:"28 Mar 2026", time:"09:00", cat:"Sub-15", field:"Campo A", status:"próximo", scoreH:null, scoreA:null, fase:"Normal" },
+        { id:8004, home:"Rómulo FC", away:"Escuela Cruz Diez",  date:"08 Mar 2026", time:"11:00", cat:"Sub-13", field:"Campo C", status:"finalizado", scoreH:2, scoreA:0, fase:"Normal", playerStats:{ 9002:{ goles:1, asistencias:1 } }, mvp:{ playerId:9002, nombre:"Andrés", apellido:"Martínez" } },
+        { id:8005, home:"Rómulo FC", away:"Mineros de Guayana", date:"25 Mar 2026", time:"16:00", cat:"Sub-13", field:"Campo B", status:"próximo", scoreH:null, scoreA:null, fase:"Normal" },
+        { id:8006, home:"Rómulo FC", away:"Deportivo Lara",     date:"01 Mar 2026", time:"10:00", cat:"Sub-17", field:"Campo A", status:"finalizado", scoreH:0, scoreA:2, fase:"Normal", playerStats:{ 9003:{ goles:0, asistencias:0 } }, mvp:null },
+      ];
+      const DPAY = {
+        9001: { id:9001, months:{ Ene:{ paid:true, monto:"30", metodo:"Efectivo Bs.", date:"05 Ene" }, Feb:{ paid:true, monto:"30", metodo:"Zelle", date:"03 Feb" }, Mar:{ paid:false } }, history:[], arbitraje:[] },
+        9002: { id:9002, months:{ Ene:{ paid:true, monto:"30", metodo:"Efectivo Bs.", date:"04 Ene" }, Feb:{ paid:false }, Mar:{ paid:false } }, history:[], arbitraje:[] },
+        9003: { id:9003, months:{ Ene:{ paid:true, monto:"30", metodo:"Binance", date:"02 Ene" }, Feb:{ paid:true, monto:"30", metodo:"Binance", date:"01 Feb" }, Mar:{ paid:true, monto:"30", metodo:"Binance", date:"01 Mar" } }, history:[], arbitraje:[] },
+        9004: { id:9004, months:{ Ene:{ paid:true, monto:"30", metodo:"Efectivo Bs.", date:"06 Ene" }, Feb:{ paid:false }, Mar:{ paid:false } }, history:[], arbitraje:[] },
+        9005: { id:9005, months:{ Ene:{ paid:false }, Feb:{ paid:false }, Mar:{ paid:false } }, history:[], arbitraje:[] },
+      };
+      const DATT = {
+        9001: { "6001":{ present:true }, "6002":{ present:true }, "6003":{ present:false } },
+        9002: { "6001":{ present:true }, "6002":{ present:false }, "6003":{ present:true } },
+        9003: { "6001":{ present:true }, "6002":{ present:true }, "6003":{ present:true } },
+        9004: { "6001":{ present:false }, "6002":{ present:true }, "6003":{ present:true } },
+        9005: { "6001":{ present:true }, "6002":{ present:true }, "6003":{ present:false } },
+      };
+      const DSANC = {
+        9001:{ id:9001, yellows:1, reds:0, suspended:false },
+        9002:{ id:9002, yellows:2, reds:0, suspended:false },
+        9003:{ id:9003, yellows:0, reds:0, suspended:false },
+        9004:{ id:9004, yellows:0, reds:1, suspended:true  },
+        9005:{ id:9005, yellows:1, reds:0, suspended:false },
+      };
+      const DCHAMPS = [{ id:7001, nombre:"Copa Rómulo FC 2026", cats:["Sub-15","Sub-13"], activo:true, fase:"grupos", grupos:[{ nombre:"Grupo A", equipos:["Rómulo FC","Deportivo Carabobo","Atlético Valencia","Escuela Cruz Diez"] }], standings:[{ equipo:"Rómulo FC", pj:2, g:1, e:1, p:0, gf:4, gc:2, pts:4, dg:2 },{ equipo:"Deportivo Carabobo", pj:2, g:1, e:0, p:1, gf:3, gc:3, pts:3, dg:0 },{ equipo:"Atlético Valencia", pj:2, g:0, e:1, p:1, gf:2, gc:4, pts:1, dg:-2 }] }];
+      const DTRAININGS = [
+        { id:"6001", fecha:"2026-03-24", hora:"17:00", lugar:"Campo A", cats:["Sub-15"], tema:"Definición y finalización", notas:"Traer peto azul" },
+        { id:"6002", fecha:"2026-03-26", hora:"17:00", lugar:"Campo A", cats:["Sub-15"], tema:"Pases en velocidad", notas:"" },
+        { id:"6003", fecha:"2026-03-28", hora:"17:00", lugar:"Campo B", cats:["Sub-15"], tema:"Táctica defensiva", notas:"Trabajo físico" },
+        { id:"6004", fecha:"2026-03-24", hora:"16:00", lugar:"Campo C", cats:["Sub-13"], tema:"Control de balón", notas:"" },
+      ];
+      const DCOACHES = [
+        { id:1, name:"Rómulo García", role:"Director Técnico", cat:"Todas", pin:"1111", perms:["inicio","jugadores","asistencia","pagos","calendario","entrenamientos","campeonatos","uniformes","chat","stats","entrenadores","config","partido"] },
+        { id:2, name:"Carlos Mendez", role:"Entrenador Sub-15", cat:"Sub-15", pin:"2222", perms:["inicio","jugadores","asistencia","pagos","calendario","entrenamientos","campeonatos","uniformes","chat","stats","partido"] },
+      ];
+      const DATT_MATCHES = [
+        { matchId:8001, date:"10 Mar 2026", cat:"Sub-15", home:"Rómulo FC", away:"Deportivo Carabobo", convocados:[9001,9004], titulares:[9001,9004], mvp:{ playerId:9001 } },
+        { matchId:8002, date:"05 Mar 2026", cat:"Sub-15", home:"Rómulo FC", away:"Atlético Valencia",  convocados:[9001,9004], titulares:[9001],       mvp:{ playerId:9004 } },
+      ];
+      setPlayers(DP); setPay(DPAY); setSanc(DSANC); setAtt(DATT);
+      setCoaches(DCOACHES); setMatches(DM); setChamps(DCHAMPS);
+      setTrainings(DTRAININGS); setAttMatches(DATT_MATCHES);
       setDbReady(true);
       return;
     }
@@ -4005,7 +3980,16 @@ export default function App() {
           </button>
           <div className="lcard">
 
-            {lstep === "demo" && (
+            {lstep === "demo" && (() => {
+              // Datos demo — solo se cargan cuando se activa el modo demo
+              const DEMO_PLAYERS = [
+                { id:9001, nombre:"Carlos",   apellido:"Rodríguez", cat:"Sub-15", num:10, tel:"04140000001", repNombre:"Pedro",  repApellido:"Rodríguez", repTel:"04140000002", repCedula:"V-99000001", cedula:"V-88000001", dob:"2010-03-15", foto:null, stats:{ goles:8, asistencias:5, partidos:12 }, subequipo:"A", talla:"M", tipoSangre:"O+", contactoEmergencia:"Pedro Rodríguez 04140000002", eval:{ velocidad:8, tecnica:9, tactica:7, fisico:8, actitud:9, trabajo:9 } },
+                { id:9002, nombre:"Andrés",   apellido:"Martínez",  cat:"Sub-13", num:7,  tel:"04140000003", repNombre:"Ana",    repApellido:"Martínez",  repTel:"04140000004", repCedula:"V-99000003", cedula:"V-88000003", dob:"2012-06-22", foto:null, stats:{ goles:4, asistencias:7, partidos:10 }, subequipo:"B", talla:"S", tipoSangre:"A+", contactoEmergencia:"Ana Martínez 04140000004",    eval:{ velocidad:7, tecnica:8, tactica:8, fisico:6, actitud:8, trabajo:9 } },
+                { id:9003, nombre:"Luis",     apellido:"García",    cat:"Sub-17", num:1,  tel:"04140000005", repNombre:"María",  repApellido:"García",    repTel:"04140000006", repCedula:"V-99000005", cedula:"V-88000005", dob:"2008-11-08", foto:null, stats:{ goles:0, asistencias:2, partidos:14 }, subequipo:"A", talla:"L", tipoSangre:"B+", contactoEmergencia:"María García 04140000006",   eval:{ velocidad:6, tecnica:7, tactica:9, fisico:9, actitud:7, trabajo:8 } },
+                { id:9004, nombre:"Miguel",   apellido:"Torres",    cat:"Sub-15", num:5,  tel:"04140000007", repNombre:"Jorge",  repApellido:"Torres",    repTel:"04140000008", repCedula:"V-99000007", cedula:"V-88000007", dob:"2010-08-20", foto:null, stats:{ goles:5, asistencias:3, partidos:11 }, subequipo:"A", talla:"M", tipoSangre:"AB+", contactoEmergencia:"Jorge Torres 04140000008",  eval:{ velocidad:9, tecnica:7, tactica:6, fisico:9, actitud:8, trabajo:7 } },
+                { id:9005, nombre:"Gabriela", apellido:"Vega",      cat:"Sub-11", num:3,  tel:"04140000009", repNombre:"Carmen", repApellido:"Vega",      repTel:"04140000010", repCedula:"V-99000009", cedula:"V-88000009", dob:"2014-01-10", foto:null, stats:{ goles:2, asistencias:4, partidos:8  }, subequipo:"B", talla:"XS", tipoSangre:"O-", contactoEmergencia:"Carmen Vega 04140000010",   eval:{ velocidad:7, tecnica:6, tactica:5, fisico:6, actitud:10, trabajo:9 } },
+              ];
+              return (
               <>
                 <div className="ltitle">🎮 Modo Demo</div>
                 <div style={{ fontSize:8.5, color:"#4e6a88", marginBottom:10, textAlign:"center", lineHeight:1.6 }}>
@@ -4058,7 +4042,8 @@ export default function App() {
                 <button className="btn-sm" style={{ width:"100%", marginTop:8, textAlign:"center" }}
                   onClick={()=>setLstep("role")}>← Volver</button>
               </>
-            )}
+              );
+            })()}
 
             {lstep === "role" && (
               <>
