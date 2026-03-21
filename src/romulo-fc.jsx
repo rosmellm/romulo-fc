@@ -3256,15 +3256,18 @@ export default function App() {
       sessionStorage.setItem("rfc_session", JSON.stringify({ role:"admin", user:c }));
       requestNotifPermission(c.id);
     } else if (role === "player") {
-      const clean = lid.trim().toUpperCase().replace(/\s/g,"");
-      const p = players.find(x => x.cedula && x.cedula.toUpperCase().replace(/\s/g,"") === clean);
+      // Normalizar: quitar prefijos V- E- J- P- y espacios para comparación flexible
+      const normCI = v => v ? v.trim().toUpperCase().replace(/\s/g,"").replace(/^[VEJPG]-?/,"") : "";
+      const clean = normCI(lid);
+      const p = players.find(x => normCI(x.cedula) === clean);
       if (!p) { setLerr("Cédula no registrada"); return; }
       const u = { name: p.nombre + " " + p.apellido, playerId: p.id, cat: p.cat, perms:[] };
       setUser(u); setLoggedIn(true);
       sessionStorage.setItem("rfc_session", JSON.stringify({ role:"player", user:u }));
     } else if (role === "parent") {
-      const clean = lid.trim().toUpperCase().replace(/\s/g,"");
-      const todos = players.filter(x => x.repCedula && x.repCedula.toUpperCase().replace(/\s/g,"") === clean);
+      const normCI = v => v ? v.trim().toUpperCase().replace(/\s/g,"").replace(/^[VEJPG]-?/,"") : "";
+      const clean = normCI(lid);
+      const todos = players.filter(x => normCI(x.repCedula) === clean);
       if (!todos.length) { setLerr("Cédula del representante no registrada"); return; }
       const p = todos[0];
       // Guardar todos los IDs de hijos para que el rep pueda cambiar entre ellos
