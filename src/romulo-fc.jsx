@@ -1087,6 +1087,22 @@ function LiveMatch({ match, myPlayers, sanctions, setSanctions, onClose, onSave,
     closeModal();
   }
 
+  // Autogol RFC → suma al rival
+  function doOwnGoalUs(pid) {
+    const p = myPlayers.find(x => x.id === pid);
+    setThem(s => s + 1); // suma al rival
+    addLog("goal_them", "Autogol RFC: " + (p ? p.nombre + " " + p.apellido : ""), "🙈");
+    closeModal();
+  }
+
+  // Autogol rival → suma a RFC
+  function doOwnGoalThem(rnum) {
+    const r = rnum !== null ? rivals.find(x => x.num === rnum) : null;
+    setUs(s => s + 1); // suma a RFC
+    addLog("goal_us", "Autogol rival" + (r ? ": #" + r.num + " " + r.name : ""), "🙈");
+    closeModal();
+  }
+
   function doFoulUs(pid, type) {
     const p = myPlayers.find(x => x.id === pid);
     setMyFouls(f => ({ ...f, [pid]: { ...f[pid], [type]: (f[pid][type] || 0) + 1 } }));
@@ -1866,6 +1882,8 @@ function LiveMatch({ match, myPlayers, sanctions, setSanctions, onClose, onSave,
           </button>
           <button className="abtn abtn-b" onClick={() => setModal("goal_us")}>⚽ Gol RFC</button>
           <button className="abtn abtn-r" onClick={() => setModal("goal_them")}>⚽ Gol Rival</button>
+          <button className="abtn" style={{ background:"rgba(100,100,100,.15)", borderColor:"rgba(150,150,150,.3)", color:"#9ab8cc", fontSize:9 }} onClick={() => setModal("own_goal_us")}>🙈 Autogol RFC</button>
+          <button className="abtn" style={{ background:"rgba(100,100,100,.15)", borderColor:"rgba(150,150,150,.3)", color:"#9ab8cc", fontSize:9 }} onClick={() => setModal("own_goal_them")}>🙈 Autogol Rival</button>
           <button className="abtn" onClick={() => setModal("foul_us")}>⚠️ Falta RFC</button>
           <button className="abtn abtn-r" onClick={() => setModal("foul_them")}>⚠️ Falta Rival</button>
           <button className="abtn abtn-y" onClick={() => setModal("yel_us")}>🟨 Amarilla RFC</button>
@@ -2059,6 +2077,75 @@ function LiveMatch({ match, myPlayers, sanctions, setSanctions, onClose, onSave,
                 ) : (
                   <button className="btn btn-red" onClick={() => doGoalThem(null)}>CONFIRMAR GOL RIVAL</button>
                 )}
+              </>
+            )}
+
+            {/* ── Autogol RFC → suma al rival ── */}
+            {modal === "own_goal_us" && (
+              <>
+                <div className="mt2">🙈 Autogol RFC · {curMin}' <span className="mx" onClick={closeModal}>✕</span></div>
+                <p style={{ fontSize:9, color:"#4e6a88", marginBottom:8 }}>
+                  Suma 1 punto al <strong style={{ color:"#e8a0a0" }}>{match.away}</strong>.<br/>
+                  ¿Quién metió el autogol?
+                </p>
+                <div className="psgrid">
+                  {convocados.map(pid => {
+                    const p = myPlayers.find(x => x.id === pid);
+                    if (!p) return null;
+                    return (
+                      <div key={pid} className={"psbtn" + (selP === pid ? " psred" : "")}
+                        onClick={() => setSelP(pid)}>
+                        <Avatar p={p} size={24}/>
+                        <div><div className="psbtn-n">#{p.num} {p.nombre}</div></div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div style={{ display:"flex", gap:6, marginTop:8 }}>
+                  {selP && (
+                    <button className="btn btn-red" onClick={() => doOwnGoalUs(selP)}>
+                      CONFIRMAR AUTOGOL
+                    </button>
+                  )}
+                  <button className="btn" style={{ background:"#0c1220", border:"1px solid rgba(33,150,243,.15)", fontSize:11 }}
+                    onClick={() => { setThem(s=>s+1); addLog("goal_them","Autogol RFC","🙈"); closeModal(); }}>
+                    Sin asignar
+                  </button>
+                </div>
+              </>
+            )}
+
+            {/* ── Autogol rival → suma a RFC ── */}
+            {modal === "own_goal_them" && (
+              <>
+                <div className="mt2">🙈 Autogol Rival · {curMin}' <span className="mx" onClick={closeModal}>✕</span></div>
+                <p style={{ fontSize:9, color:"#4e6a88", marginBottom:8 }}>
+                  Suma 1 punto a <strong style={{ color:"#7ab3e0" }}>{match.home}</strong>.<br/>
+                  {rivals.length > 0 ? "¿Quién metió el autogol?" : ""}
+                </p>
+                {rivals.length > 0 && (
+                  <div className="psgrid">
+                    {rivals.map(r => (
+                      <div key={r.num} className={"psbtn" + (selR === r.num ? " pssel" : "")}
+                        onClick={() => setSelR(r.num)}>
+                        <span className="riv-num" style={{ width:"auto", marginRight:4 }}>#{r.num}</span>
+                        <span style={{ fontSize:10 }}>{r.name || "–"}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div style={{ display:"flex", gap:6, marginTop:8 }}>
+                  {rivals.length > 0 && selR !== null && (
+                    <button className="btn" style={{ background:"rgba(21,101,192,.2)", borderColor:"rgba(33,150,243,.4)", color:"#7ab3e0" }}
+                      onClick={() => doOwnGoalThem(selR)}>
+                      CONFIRMAR AUTOGOL
+                    </button>
+                  )}
+                  <button className="btn" style={{ background:"#0c1220", border:"1px solid rgba(33,150,243,.15)", fontSize:11 }}
+                    onClick={() => { setUs(s=>s+1); addLog("goal_us","Autogol rival","🙈"); closeModal(); }}>
+                    Sin asignar
+                  </button>
+                </div>
               </>
             )}
 
@@ -2611,14 +2698,12 @@ export default function App() {
       setNotifs(snap.docs.map(d => ({ ...d.data(), id: d.id })).sort((a,b) => b.ts?.localeCompare?.(a.ts)||0));
     }));
 
-    // Coaches — si Firebase está vacío, migra los defaults automáticamente
+    // Coaches — solo lee de Firebase, nunca sobreescribe
     unsubs.push(onSnapshot(collection(db, "coaches"), snap => {
-      if (snap.docs.length === 0) {
-        // Primera vez: guardar coaches por defecto en Firebase
-        COACHES_DEFAULT.forEach(c => setDoc(doc(db, "coaches", String(c.id)), c));
-      } else {
+      if (snap.docs.length > 0) {
         setCoaches(snap.docs.map(d => ({ ...d.data(), id: d.id })));
       }
+      // Si está vacío no hacemos nada — el DT los crea desde el módulo Entrenadores
     }));
 
     // Configuración del club
@@ -2813,6 +2898,9 @@ export default function App() {
   const [exentoModal, setExentoModal] = useState(null);
   const [selectedChildId,  setSelectedChildId]  = useState(null);
   const [liveMMinimized,   setLiveMMinimized]   = useState(false); // live match en segundo plano
+  const [quickResult,     setQuickResult]     = useState(null);  // partido para resultado rápido
+  const [qr,              setQr]              = useState({ scoreH:"", scoreA:"", goleadores:[] });
+  const [qrInput,         setQrInput]         = useState("");    // input goleador
   const [liveState,        setLiveState]        = useState({ secs:0, scoreUs:0, scoreThem:0, running:false });
   const [bulkMode,      setBulkMode]      = useState(false);   // modo edición masiva
   const [bulkSel,       setBulkSel]       = useState([]);      // ids seleccionados
@@ -5207,9 +5295,16 @@ export default function App() {
               <MatchCard m={m} champs={champs} />
               <div style={{ display:"flex", gap:6, marginTop:4 }}>
                 {can("partido") && (
-                  <button className="btn" style={{ flex:1, padding:8, fontSize:11 }} onClick={() => setLiveM(m)}>
-                    🟢 Iniciar En Vivo
-                  </button>
+                  <>
+                    <button className="btn" style={{ flex:1, padding:8, fontSize:11 }} onClick={() => setLiveM(m)}>
+                      🟢 En Vivo
+                    </button>
+                    <button className="btn-sm" style={{ flex:1, padding:8, fontSize:10,
+                      background:"rgba(212,184,74,.1)", color:"#d4b84a", borderColor:"rgba(212,184,74,.3)" }}
+                      onClick={() => { setQuickResult(m); setQr({ scoreH:"", scoreA:"", goleadores:[] }); setQrInput(""); }}>
+                      📋 Resultado
+                    </button>
+                  </>
                 )}
                 <button className="btn-wa" style={{ flex:1, justifyContent:"center" }} onClick={() => {
                   const mp = players.filter(p => p.cat === m.cat);
@@ -6883,9 +6978,16 @@ export default function App() {
               )}
               <div style={{ display:"flex", gap:6, marginBottom:9 }}>
                 {can("partido") && m.status === "próximo" && (
-                  <button className="btn" style={{ flex:1, padding:8, fontSize:11 }} onClick={() => setLiveM(m)}>
-                    🟢 En Vivo
-                  </button>
+                  <>
+                    <button className="btn" style={{ flex:1, padding:8, fontSize:11 }} onClick={() => setLiveM(m)}>
+                      🟢 En Vivo
+                    </button>
+                    <button className="btn-sm" style={{ flex:1, padding:8, fontSize:10,
+                      background:"rgba(212,184,74,.1)", color:"#d4b84a", borderColor:"rgba(212,184,74,.3)" }}
+                      onClick={() => { setQuickResult(m); setQr({ scoreH:"", scoreA:"", goleadores:[] }); setQrInput(""); }}>
+                      📋 Resultado
+                    </button>
+                  </>
                 )}
                 {/* Botón MVP para partidos finalizados */}
                 {m.status === "finalizado" && (() => {
@@ -10079,6 +10181,153 @@ export default function App() {
                   </div>
                 </div>
               )}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ── MODAL RESULTADO RÁPIDO ── */}
+      {quickResult && (() => {
+        const m = quickResult;
+        const catPlayers = players.filter(p => p.cat === m.cat);
+
+        function saveQuickResult() {
+          const sH = parseInt(qr.scoreH)||0;
+          const sA = parseInt(qr.scoreA)||0;
+
+          // Armar playerStats desde los goleadores seleccionados
+          const playerStats = {};
+          qr.goleadores.forEach(pid => {
+            if (!playerStats[pid]) playerStats[pid] = { goles:0, asistencias:0 };
+            playerStats[pid].goles++;
+          });
+
+          const matchData = { ...m, scoreH:sH, scoreA:sA, status:"finalizado",
+            events:[], playerStats };
+          safeSetDoc(doc(db,"matches",String(m.id)), matchData);
+
+          // Actualizar stats acumuladas de jugadores
+          Object.entries(playerStats).forEach(([pid, ps]) => {
+            const pl = players.find(x=>String(x.id)===String(pid));
+            if (!pl) return;
+            const cur = pl.stats||{goles:0,asistencias:0,partidos:0};
+            safeSetDoc(doc(db,"players",String(pid)), { ...pl, stats:{
+              goles:       (cur.goles||0)+(ps.goles||0),
+              asistencias: (cur.asistencias||0),
+              partidos:    (cur.partidos||0)+1,
+            }});
+          });
+          // Jugadores sin gol también suman 1 partido
+          catPlayers.forEach(pl => {
+            if (playerStats[pl.id]) return;
+            const cur = pl.stats||{goles:0,asistencias:0,partidos:0};
+            safeSetDoc(doc(db,"players",String(pl.id)), { ...pl, stats:{
+              ...cur, partidos:(cur.partidos||0)+1
+            }});
+          });
+
+          // Notificación
+          const res = sH>sA?"🏆 VICTORIA":sH<sA?"😔 DERROTA":"🤝 EMPATE";
+          addNotif(res+" · "+m.home+" "+sH+"-"+sA+" "+m.away, "calendario", "cat:"+m.cat, "resultado");
+
+          setQuickResult(null);
+          setQr({ scoreH:"", scoreA:"", goleadores:[] });
+          setQrInput("");
+        }
+
+        return (
+          <div className="ov" onClick={e=>{ if(e.target.className==="ov") setQuickResult(null); }}>
+            <div className="modal" style={{ borderTop:"3px solid #d4b84a" }}>
+              <div className="mt2" style={{ color:"#d4b84a" }}>
+                📋 Registrar Resultado
+                <span className="mx" onClick={()=>setQuickResult(null)}>✕</span>
+              </div>
+
+              {/* Info del partido */}
+              <div style={{ background:"rgba(21,101,192,.07)", borderRadius:8,
+                padding:"9px 12px", marginBottom:12, textAlign:"center" }}>
+                <div style={{ fontSize:10, fontWeight:600, color:"#c0cfe0" }}>
+                  {m.home} vs {m.away}
+                </div>
+                <div style={{ fontSize:8, color:"#4e6a88", marginTop:2 }}>
+                  {m.date} · {m.cat} · {m.field}
+                </div>
+              </div>
+
+              {/* Marcador */}
+              <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:14 }}>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontSize:8, color:"#4e6a88", marginBottom:4, textAlign:"center" }}>{m.home}</div>
+                  <input className="inp" type="number" min="0" value={qr.scoreH}
+                    onChange={e=>setQr(v=>({...v,scoreH:e.target.value}))}
+                    style={{ textAlign:"center", fontSize:28, fontFamily:"'Bebas Neue',sans-serif",
+                      color:"#7ab3e0", padding:"8px 0" }}/>
+                </div>
+                <div style={{ fontSize:20, color:"#4e6a88", fontFamily:"'Bebas Neue',sans-serif",
+                  paddingTop:18 }}>—</div>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontSize:8, color:"#4e6a88", marginBottom:4, textAlign:"center" }}>{m.away}</div>
+                  <input className="inp" type="number" min="0" value={qr.scoreA}
+                    onChange={e=>setQr(v=>({...v,scoreA:e.target.value}))}
+                    style={{ textAlign:"center", fontSize:28, fontFamily:"'Bebas Neue',sans-serif",
+                      color:"#e8a0a0", padding:"8px 0" }}/>
+                </div>
+              </div>
+
+              {/* Goleadores de RFC */}
+              <div style={{ marginBottom:12 }}>
+                <div style={{ fontSize:8.5, fontWeight:600, color:"#7ab3e0", marginBottom:6 }}>
+                  ⚽ Goleadores de {m.home}
+                </div>
+                {/* Jugadores seleccionados como goleadores */}
+                {qr.goleadores.length > 0 && (
+                  <div style={{ display:"flex", flexWrap:"wrap", gap:4, marginBottom:8 }}>
+                    {[...new Set(qr.goleadores)].map(pid => {
+                      const pl = catPlayers.find(x=>String(x.id)===String(pid));
+                      const cnt = qr.goleadores.filter(x=>x===pid).length;
+                      return pl ? (
+                        <div key={pid} style={{ background:"rgba(33,150,243,.12)",
+                          border:"1px solid rgba(33,150,243,.25)", borderRadius:20,
+                          padding:"3px 10px", fontSize:8.5, color:"#7ab3e0",
+                          display:"flex", alignItems:"center", gap:5 }}>
+                          ⚽{cnt > 1 ? " x"+cnt : ""} {pl.nombre} {pl.apellido}
+                          <span style={{ cursor:"pointer", color:"#e8a0a0", fontSize:11 }}
+                            onClick={()=>setQr(v=>({...v, goleadores:
+                              (() => { const arr=[...v.goleadores]; arr.splice(arr.lastIndexOf(pid),1); return arr; })()
+                            }))}>✕</span>
+                        </div>
+                      ) : null;
+                    })}
+                  </div>
+                )}
+                {/* Grid de jugadores para seleccionar */}
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:4 }}>
+                  {catPlayers.map(pl => (
+                    <div key={pl.id}
+                      onClick={()=>setQr(v=>({...v, goleadores:[...v.goleadores, String(pl.id)]}))}
+                      style={{ background:"rgba(21,101,192,.08)", border:"1px solid rgba(33,150,243,.1)",
+                        borderRadius:7, padding:"6px 5px", textAlign:"center", cursor:"pointer" }}>
+                      <div style={{ fontSize:9, fontWeight:600, color:"#c0cfe0",
+                        overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                        {pl.nombre}
+                      </div>
+                      <div style={{ fontSize:7.5, color:"#4e6a88" }}>#{pl.num}</div>
+                    </div>
+                  ))}
+                </div>
+                {catPlayers.length === 0 && (
+                  <div style={{ fontSize:8, color:"#3a5068", textAlign:"center", padding:8 }}>
+                    Sin jugadores registrados en {m.cat}
+                  </div>
+                )}
+              </div>
+
+              {/* Botón guardar */}
+              <button className="btn" style={{ width:"100%",
+                opacity: (qr.scoreH===""||qr.scoreA==="") ? 0.4 : 1 }}
+                onClick={saveQuickResult}>
+                💾 GUARDAR RESULTADO
+              </button>
             </div>
           </div>
         );
