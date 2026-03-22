@@ -342,11 +342,13 @@ const CSS = `
 *{box-sizing:border-box;margin:0;padding:0;}
 
 /* ── Variables modo oscuro (default) ── */
+/* ── Modo oscuro (original — sin cambios) ── */
 :root {
-  --bg:        var(--bg);
-  --bg2:       #06091a;
+  --bg:        #04060c;
+  --bg2:       #060919;
   --bg3:       #090d1a;
   --bg4:       #0a0f1e;
+  --bg5:       #0c1220;
   --txt:       #afc4d8;
   --txt2:      #7ab3e0;
   --txt3:      #4e6a88;
@@ -365,6 +367,7 @@ body.light {
   --bg2:       #ffffff;
   --bg3:       #e8eef5;
   --bg4:       #dde6f0;
+  --bg5:       #d8e4f0;
   --txt:       #1a2a3a;
   --txt2:      #1565C0;
   --txt3:      #4a6080;
