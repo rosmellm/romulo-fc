@@ -2680,12 +2680,14 @@ export default function App() {
   // ── PUSH NOTIFICATIONS ─────────────────────
   const [pushStatus, setPushStatus] = useState("idle"); // idle | requesting | granted | denied | unsupported
   const [swUpdate,  setSwUpdate]   = useState(false);
-  const [darkMode,  setDarkMode]   = useState(() => localStorage.getItem("rfc_theme") !== "light");
+  const [darkMode,  setDarkMode]   = useState(() => {
+    try { return localStorage.getItem("rfc_theme") !== "light"; } catch { return true; }
+  });
 
   // Aplicar clase al body según el modo
   useEffect(() => {
     document.body.classList.toggle("light", !darkMode);
-    localStorage.setItem("rfc_theme", darkMode ? "dark" : "light");
+    try { localStorage.setItem("rfc_theme", darkMode ? "dark" : "light"); } catch {}
   }, [darkMode]);
 
   // ── Listener de actualizaciones del SW ──
@@ -2838,7 +2840,6 @@ export default function App() {
     // Jugadores
     unsubs.push(onSnapshot(collection(db, "players"), snap => {
       // Usar docChanges para actualizaciones incrementales
-      if (snap.metadata.fromCache) return; // ignorar cache inicial
       const data = snap.docs.map(d => ({ ...d.data(), id: d.id }));
       setPlayers(data);
       // Inicializar pay/sanc/att para jugadores nuevos
