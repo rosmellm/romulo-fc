@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 
 // ─── CONSTANTS ────────────────────────────────────────────────
 const MONTHS = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
@@ -38,22 +38,8 @@ const CAT_COLOR = {
   "Sub-17":"#1E88E5","Sub-19":"#2196F3"
 };
 
-const COACHES_DEFAULT = [
-  {id:"1",name:"Rómulo García",  role:"Director Técnico", pin:"1111",cat:"Todas",  tel:"04140000001",
-   perms:["jugadores","pagos","calendario","stats","entrenadores","partido"]},
-  {id:"2",name:"Carlos Mendez",  role:"Entrenador Sub-11",pin:"2222",cat:"Sub-11", tel:"04140000002",
-   perms:["jugadores","pagos","calendario","stats","partido"]},
-  {id:"3",name:"Luis Torres",    role:"Entrenador Sub-13",pin:"3333",cat:"Sub-13", tel:"04140000003",
-   perms:["jugadores","pagos","calendario","stats","partido"]},
-  {id:"4",name:"Andrés Vega",    role:"Entrenador Sub-15",pin:"4444",cat:"Sub-15", tel:"04140000004",
-   perms:["jugadores","pagos","calendario","stats","partido"]},
-  {id:"5",name:"Miguel Soto",    role:"Entrenador Sub-17",pin:"5555",cat:"Sub-17", tel:"04140000005",
-   perms:["jugadores","pagos","calendario","stats","partido"]},
-  {id:"6",name:"Diego Ríos",     role:"Entrenador Sub-19",pin:"6666",cat:"Sub-19", tel:"04140000006",
-   perms:["jugadores","pagos","calendario","stats","partido"]},
-  {id:"7",name:"Javier Cruz",    role:"Asistente General",pin:"7777",cat:"Todas",  tel:"04140000007",
-   perms:["jugadores","calendario","stats"]},
-];
+// Coaches — vienen 100% de Firebase, sin defaults hardcoded
+const COACHES_DEFAULT = [];
 
 // Datos iniciales vacíos — todo viene de Firebase
 const INIT_PLAYERS = [];
@@ -320,7 +306,7 @@ import { initializeApp } from "firebase/app";
 import {
   getFirestore, collection, doc,
   onSnapshot, setDoc, updateDoc, deleteDoc, getDoc,
-  enableIndexedDbPersistence
+  enableIndexedDbPersistence, query, orderBy, limit
 } from "firebase/firestore";
 import { getMessaging, getToken, onMessage } from "firebase/messaging";
 
@@ -338,25 +324,58 @@ const fbApp     = initializeApp(firebaseConfig);
 const db        = getFirestore(fbApp);
 const messaging = getMessaging(fbApp);
 
-// ── Modo offline: persistencia local con IndexedDB ──
-enableIndexedDbPersistence(db).catch(err => {
-  if (err.code === "failed-precondition") {
-    console.warn("Offline: múltiples pestañas abiertas");
-  } else if (err.code === "unimplemented") {
-    console.warn("Offline: navegador no soportado");
-  }
-});
+// ── Modo offline: persistencia local con IndexedDB (async para no bloquear) ──
+setTimeout(() => {
+  enableIndexedDbPersistence(db).catch(()=>{});
+}, 100);
 
 // VAPID key — la obtienes en Firebase Console → Project Settings → Cloud Messaging → Web Push certificates
 const VAPID_KEY = "BEbMBO0z6wJn_Go07XmMsZuujs7Y0n3cm-WmAPCkXubfzs3chUBJpwLCDw_fLY89MJ5Zzauq7-3ZS7zswC4z08s";
 
 
 const CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;600&display=swap&font-display=swap');
 *{box-sizing:border-box;margin:0;padding:0;}
-body{background:#04060c;color:#afc4d8;font-family:'DM Sans',sans-serif;min-height:100vh;font-size:13px;letter-spacing:.01em;}
-.app{max-width:430px;margin:0 auto;min-height:100vh;background:#04060c;position:relative;}
-.hdr{background:rgba(4,6,12,.97);padding:11px 15px 9px;border-bottom:1px solid rgba(33,150,243,.07);position:sticky;top:0;z-index:100;backdrop-filter:blur(10px);}
+
+/* ── Variables modo oscuro (default) ── */
+:root {
+  --bg:        #04060c;
+  --bg2:       #06091a;
+  --bg3:       #090d1a;
+  --bg4:       #0a0f1e;
+  --txt:       #afc4d8;
+  --txt2:      #7ab3e0;
+  --txt3:      #4e6a88;
+  --txt4:      #3a5068;
+  --brd:       rgba(33,150,243,.08);
+  --brd2:      rgba(33,150,243,.15);
+  --card:      #06091a;
+  --hdr:       rgba(4,6,12,.97);
+  --inp:       #090d1a;
+  --shadow:    rgba(0,0,0,.5);
+}
+
+/* ── Variables modo claro ── */
+body.light {
+  --bg:        #f0f4f8;
+  --bg2:       #ffffff;
+  --bg3:       #e8eef5;
+  --bg4:       #dde6f0;
+  --txt:       #1a2a3a;
+  --txt2:      #1565C0;
+  --txt3:      #4a6080;
+  --txt4:      #7a90a8;
+  --brd:       rgba(21,101,192,.12);
+  --brd2:      rgba(21,101,192,.25);
+  --card:      #ffffff;
+  --hdr:       rgba(240,244,248,.97);
+  --inp:       #f8fafc;
+  --shadow:    rgba(0,0,0,.1);
+}
+
+body{background:var(--bg);color:var(--txt);font-family:'DM Sans',sans-serif;min-height:100vh;font-size:13px;letter-spacing:.01em;transition:background .2s,color .2s;}
+.app{max-width:430px;margin:0 auto;min-height:100vh;background:var(--bg);position:relative;}
+.hdr{background:var(--hdr);padding:11px 15px 9px;border-bottom:1px solid rgba(33,150,243,.07);position:sticky;top:0;z-index:100;backdrop-filter:blur(10px);transform:translateZ(0);will-change:transform;}
 .hdr-row{display:flex;justify-content:space-between;align-items:center;}
 .logo{font-family:'Bebas Neue',sans-serif;font-size:22px;font-weight:400;letter-spacing:2px;}
 .lb{color:#2196F3;}.lr{color:#E53935;}
@@ -365,14 +384,14 @@ body{background:#04060c;color:#afc4d8;font-family:'DM Sans',sans-serif;min-heigh
 .badge{font-size:7.5px;font-weight:500;padding:2px 8px;border-radius:4px;letter-spacing:.3px;font-family:'DM Sans',sans-serif;}
 .badge-r{background:rgba(183,28,28,.12);color:#e8a0a0;border:1px solid rgba(229,57,53,.16);}
 .badge-b{background:rgba(21,101,192,.12);color:#7ab3e0;border:1px solid rgba(33,150,243,.16);}
-.ico-btn{width:29px;height:29px;border-radius:50%;border:1px solid rgba(33,150,243,.08);background:#090d1a;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:13px;position:relative;}
+.ico-btn{width:29px;height:29px;border-radius:50%;border:1px solid var(--brd);background:var(--bg3);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:13px;position:relative;}
 .rdot{width:6px;height:6px;background:#E53935;border-radius:50%;position:absolute;top:2px;right:2px;}
-.nav{display:flex;gap:4px;overflow-x:auto;padding:7px 13px;background:#060919;border-bottom:1px solid rgba(33,150,243,.06);scrollbar-width:none;}
+.nav{display:flex;gap:4px;overflow-x:auto;padding:7px 13px;background:var(--bg2);border-bottom:1px solid var(--brd);scrollbar-width:none;}
 .nav::-webkit-scrollbar{display:none;}
-.nb{flex-shrink:0;padding:4px 11px;border-radius:14px;border:1px solid rgba(33,150,243,.08);background:transparent;color:#3a5068;font-family:'DM Sans',sans-serif;font-size:10px;font-weight:400;cursor:pointer;white-space:nowrap;}
+.nb{flex-shrink:0;padding:4px 11px;border-radius:14px;border:1px solid var(--brd);background:transparent;color:var(--txt3);font-family:'DM Sans',sans-serif;font-size:10px;font-weight:400;cursor:pointer;white-space:nowrap;}
 .nb.ab{background:#1565C0;border-color:#1565C0;color:#fff;font-weight:500;}
-.cnt{padding:12px 14px 100px;}
-.card{background:#06091a;border:1px solid rgba(33,150,243,.08);border-radius:12px;padding:12px;margin-bottom:9px;}
+.cnt{padding:12px 14px 100px;contain:style layout;}
+.card{background:var(--card);border:1px solid var(--brd);border-radius:12px;padding:12px;margin-bottom:9px;}
 .card-r{border-color:rgba(229,57,53,.12);}
 .ch{display:flex;justify-content:space-between;align-items:center;margin-bottom:9px;}
 .ct{font-family:'Bebas Neue',sans-serif;font-size:13px;font-weight:400;letter-spacing:.3px;}
@@ -387,7 +406,7 @@ body{background:#04060c;color:#afc4d8;font-family:'DM Sans',sans-serif;min-heigh
 .sb{background:#090d1a;border:1px solid rgba(33,150,243,.08);border-radius:9px;padding:9px 5px;text-align:center;}
 .sn{font-family:'Bebas Neue',sans-serif;font-size:24px;font-weight:400;line-height:1;}
 .sl{font-size:7px;color:#3a5068;margin-top:1px;text-transform:uppercase;letter-spacing:.3px;font-family:'DM Sans',sans-serif;}
-.pr{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.02);}
+.pr{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--brd);}
 .pr:last-child{border-bottom:none;}
 .av{border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'Bebas Neue',sans-serif;font-weight:400;color:#fff;flex-shrink:0;overflow:hidden;}
 .av img{width:100%;height:100%;object-fit:cover;border-radius:50%;}
@@ -433,14 +452,14 @@ body{background:#04060c;color:#afc4d8;font-family:'DM Sans',sans-serif;min-heigh
 .btn-red{background:#C62828;}
 .btn-sm{padding:4px 9px;border-radius:6px;border:1px solid rgba(33,150,243,.1);background:transparent;color:#3a5068;font-size:9px;cursor:pointer;font-family:'DM Sans',sans-serif;}
 .btn-wa{background:rgba(33,150,243,.07);border:1px solid rgba(33,150,243,.15);color:#7ab3e0;border-radius:7px;padding:5px 10px;font-size:9px;font-weight:500;cursor:pointer;display:inline-flex;align-items:center;gap:4px;font-family:'DM Sans',sans-serif;}
-.bnav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:430px;background:#060919;border-top:1px solid rgba(33,150,243,.06);display:flex;overflow-x:auto;overflow-y:hidden;padding:6px 8px 13px;z-index:100;scrollbar-width:none;gap:2px;}
+.bnav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:430px;background:var(--hdr);border-top:1px solid var(--brd);display:flex;overflow-x:auto;overflow-y:hidden;padding:6px 8px 13px;z-index:100;scrollbar-width:none;gap:2px;}
 .bnav::-webkit-scrollbar{display:none;}
 .bn{flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;color:#3a5068;font-size:7px;letter-spacing:.2px;text-transform:uppercase;font-weight:400;font-family:'DM Sans',sans-serif;padding:4px 10px;border-radius:8px;min-width:52px;transition:background .15s;}
 .bn.ba{color:#2196F3;background:rgba(33,150,243,.07);}
 .bi{font-size:18px;}
 .st{font-family:'Bebas Neue',sans-serif;font-size:17px;font-weight:400;letter-spacing:.3px;margin-bottom:9px;display:flex;align-items:center;gap:5px;}
 .ov{position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:500;display:flex;align-items:flex-end;justify-content:center;}
-.modal{background:#06091a;border:1px solid rgba(33,150,243,.1);border-top:2px solid #1565C0;border-radius:14px 14px 0 0;padding:16px 14px 32px;width:100%;max-width:430px;max-height:92vh;overflow-y:auto;}
+.modal{background:var(--card);border:1px solid var(--brd2);border-top:2px solid #1565C0;border-radius:14px 14px 0 0;padding:16px 14px 32px;width:100%;max-width:430px;max-height:92vh;overflow-y:auto;}
 .mt2{font-family:'Bebas Neue',sans-serif;font-size:14px;font-weight:400;letter-spacing:.3px;margin-bottom:11px;display:flex;justify-content:space-between;align-items:center;}
 .mx{font-size:16px;cursor:pointer;color:#3a5068;}
 .aov{position:fixed;inset:0;background:rgba(0,0,0,.78);z-index:600;display:flex;align-items:center;justify-content:center;padding:18px;}
@@ -560,7 +579,7 @@ body{background:#04060c;color:#afc4d8;font-family:'DM Sans',sans-serif;min-heigh
 
 // ─── SHARED COMPONENTS ────────────────────────────────────────
 
-function Avatar({ p, size }) {
+const Avatar = React.memo(function Avatar({ p, size });) {
   const sz = size || 32;
   const bg = p ? (p.col || "#1565C0") : "#1565C0";
   const letter = p ? p.nombre[0] : "?";
@@ -585,7 +604,7 @@ function FoulDots({ count, max }) {
   );
 }
 
-function ConfirmDialog({ cfg, onClose }) {
+const ConfirmDialog=React.memo(function ConfirmDialog({ cfg, onClose });) {
   if (!cfg) return null;
   return (
     <div className="aov">
@@ -605,6 +624,200 @@ function ConfirmDialog({ cfg, onClose }) {
             {cfg.okTxt || "Confirmar"}
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Modal Resultado Rápido — igual que live match ────────────────────────────
+const QuickResultModal = React.memo(function QuickResultModal({ m, players, onClose, onSave });) {
+  const { useState } = React;
+  const catPls = players.filter(p => p.cat === m.cat);
+  const [sH, setSH] = useState("");
+  const [sA, setSA] = useState("");
+  const [step, setStep] = useState("score"); // "score" | "players"
+  // Stats por jugador: { [id]: { goles, asistencias, amarilla, roja } }
+  const [ps, setPs] = useState(() => {
+    const s = {}; catPls.forEach(p => { s[p.id]={goles:0,asistencias:0,amarilla:false,roja:false}; }); return s;
+  });
+  const [selPid, setSelPid] = useState(null); // jugador seleccionado para editar
+
+  function bump(pid, field, max=99) {
+    setPs(prev => ({ ...prev, [pid]: { ...prev[pid], [field]: Math.min((prev[pid][field]||0)+1, max) } }));
+  }
+  function toggle(pid, field) {
+    setPs(prev => ({ ...prev, [pid]: { ...prev[pid], [field]: !prev[pid][field] } }));
+  }
+  function dec(pid, field) {
+    setPs(prev => ({ ...prev, [pid]: { ...prev[pid], [field]: Math.max(0,(prev[pid][field]||0)-1) } }));
+  }
+
+  function handleSave() {
+    const scoreH = parseInt(sH)||0, scoreA = parseInt(sA)||0;
+    // Armar events legibles
+    const events = [];
+    Object.entries(ps).forEach(([pid, stat]) => {
+      const pl = catPls.find(x=>String(x.id)===String(pid));
+      if (!pl) return;
+      for (let i=0; i<(stat.goles||0); i++) events.push({ type:"goal_us", txt:"Gol: "+pl.nombre+" "+pl.apellido, ico:"⚽" });
+      for (let i=0; i<(stat.asistencias||0); i++) events.push({ type:"assist", txt:"Asistencia: "+pl.nombre, ico:"🎯" });
+      if (stat.amarilla) events.push({ type:"y_us", txt:pl.nombre+" tarjeta amarilla", ico:"🟨" });
+      if (stat.roja)     events.push({ type:"r_us", txt:pl.nombre+" tarjeta roja", ico:"🟥" });
+    });
+    // Convertir ps a playerStats para Firebase
+    const playerStats = {};
+    Object.entries(ps).forEach(([pid, stat]) => {
+      if (stat.goles||stat.asistencias||stat.amarilla||stat.roja)
+        playerStats[pid] = { goles:stat.goles||0, asistencias:stat.asistencias||0 };
+    });
+    onSave(scoreH, scoreA, playerStats, events);
+  }
+
+  const selP = selPid ? catPls.find(x=>String(x.id)===String(selPid)) : null;
+
+  return (
+    <div className="ov" onClick={e=>{ if(e.target.className==="ov") onClose(); }}>
+      <div className="modal" style={{ borderTop:"3px solid #d4b84a", maxHeight:"92vh", overflowY:"auto" }}>
+        <div className="mt2" style={{ color:"#d4b84a" }}>
+          📋 Registrar Resultado
+          <span className="mx" onClick={onClose}>✕</span>
+        </div>
+
+        {/* Info partido */}
+        <div style={{ background:"rgba(21,101,192,.07)", borderRadius:8, padding:"8px 12px",
+          marginBottom:10, textAlign:"center" }}>
+          <div style={{ fontSize:10, fontWeight:600 }}>{m.home} vs {m.away}</div>
+          <div style={{ fontSize:8, color:"#4e6a88", marginTop:2 }}>{m.date} · {m.cat}</div>
+        </div>
+
+        {/* Tabs */}
+        <div style={{ display:"flex", gap:5, marginBottom:12 }}>
+          {[["score","⚽ Marcador"],["players","👥 Jugadores"]].map(([k,l])=>(
+            <button key={k} className="btn-sm" style={{ flex:1, fontSize:9,
+              background:step===k?"rgba(33,150,243,.2)":"rgba(255,255,255,.03)",
+              color:step===k?"#7ab3e0":"#4e6a88",
+              borderColor:step===k?"rgba(33,150,243,.4)":"rgba(255,255,255,.05)" }}
+              onClick={()=>setStep(k)}>{l}</button>
+          ))}
+        </div>
+
+        {/* PASO 1 — Marcador */}
+        {step==="score" && (
+          <>
+            <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:16 }}>
+              <div style={{ flex:1 }}>
+                <div style={{ fontSize:8, color:"#4e6a88", marginBottom:4, textAlign:"center" }}>{m.home}</div>
+                <input className="inp" type="number" min="0" value={sH} onChange={e=>setSH(e.target.value)}
+                  style={{ textAlign:"center", fontSize:36, fontFamily:"'Bebas Neue',sans-serif",
+                    color:"#7ab3e0", padding:"8px 0" }}/>
+              </div>
+              <div style={{ fontSize:22, color:"#4e6a88", fontFamily:"'Bebas Neue',sans-serif", paddingTop:20 }}>—</div>
+              <div style={{ flex:1 }}>
+                <div style={{ fontSize:8, color:"#4e6a88", marginBottom:4, textAlign:"center" }}>{m.away}</div>
+                <input className="inp" type="number" min="0" value={sA} onChange={e=>setSA(e.target.value)}
+                  style={{ textAlign:"center", fontSize:36, fontFamily:"'Bebas Neue',sans-serif",
+                    color:"#e8a0a0", padding:"8px 0" }}/>
+              </div>
+            </div>
+            <button className="btn" style={{ width:"100%" }}
+              onClick={()=>setStep("players")}>
+              Siguiente → Jugadores
+            </button>
+          </>
+        )}
+
+        {/* PASO 2 — Stats por jugador */}
+        {step==="players" && (
+          <>
+            <div style={{ fontSize:8.5, color:"#4e6a88", marginBottom:8 }}>
+              Toca un jugador para registrar sus stats
+            </div>
+            {/* Lista compacta */}
+            {catPls.map(pl => {
+              const stat = ps[pl.id]||{};
+              const hasData = stat.goles||stat.asistencias||stat.amarilla||stat.roja;
+              const isSel = String(selPid)===String(pl.id);
+              return (
+                <div key={pl.id}>
+                  <div onClick={()=>setSelPid(isSel?null:pl.id)}
+                    style={{ display:"flex", alignItems:"center", gap:8,
+                      padding:"8px 10px", borderRadius:8, cursor:"pointer", marginBottom:3,
+                      background: isSel?"rgba(33,150,243,.12)":"rgba(255,255,255,.02)",
+                      border:`1px solid ${isSel?"rgba(33,150,243,.3)":"rgba(255,255,255,.04)"}` }}>
+                    <div style={{ width:28, height:28, borderRadius:"50%", background:"rgba(21,101,192,.2)",
+                      display:"flex", alignItems:"center", justifyContent:"center",
+                      fontSize:10, fontWeight:700, color:"#7ab3e0", flexShrink:0 }}>
+                      {pl.nombre[0]}
+                    </div>
+                    <div style={{ flex:1 }}>
+                      <div style={{ fontSize:9.5, fontWeight:600 }}>{pl.nombre} {pl.apellido}</div>
+                      <div style={{ fontSize:7.5, color:"#4e6a88" }}>#{pl.num}</div>
+                    </div>
+                    {/* Resumen inline */}
+                    <div style={{ display:"flex", gap:4, fontSize:9 }}>
+                      {stat.goles>0 && <span style={{ color:"#d4b84a" }}>⚽{stat.goles}</span>}
+                      {stat.asistencias>0 && <span style={{ color:"#7ab3e0" }}>🎯{stat.asistencias}</span>}
+                      {stat.amarilla && <span>🟨</span>}
+                      {stat.roja && <span>🟥</span>}
+                      {!hasData && <span style={{ color:"#3a5068", fontSize:8 }}>—</span>}
+                    </div>
+                  </div>
+                  {/* Panel de edición inline */}
+                  {isSel && (
+                    <div style={{ background:"rgba(21,101,192,.06)", border:"1px solid rgba(33,150,243,.15)",
+                      borderRadius:8, padding:"10px", marginBottom:6 }}>
+                      {/* Goles */}
+                      <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8 }}>
+                        <span style={{ fontSize:9, color:"#7ab3e0", flex:1 }}>⚽ Goles</span>
+                        <button className="btn-sm" style={{ padding:"2px 10px", fontSize:14 }}
+                          onClick={()=>dec(pl.id,"goles")}>−</button>
+                        <span style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:20,
+                          color:"#d4b84a", minWidth:24, textAlign:"center" }}>{stat.goles||0}</span>
+                        <button className="btn-sm" style={{ padding:"2px 10px", fontSize:14 }}
+                          onClick={()=>bump(pl.id,"goles")}>+</button>
+                      </div>
+                      {/* Asistencias */}
+                      <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8 }}>
+                        <span style={{ fontSize:9, color:"#7ab3e0", flex:1 }}>🎯 Asistencias</span>
+                        <button className="btn-sm" style={{ padding:"2px 10px", fontSize:14 }}
+                          onClick={()=>dec(pl.id,"asistencias")}>−</button>
+                        <span style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:20,
+                          color:"#d4b84a", minWidth:24, textAlign:"center" }}>{stat.asistencias||0}</span>
+                        <button className="btn-sm" style={{ padding:"2px 10px", fontSize:14 }}
+                          onClick={()=>bump(pl.id,"asistencias")}>+</button>
+                      </div>
+                      {/* Tarjetas */}
+                      <div style={{ display:"flex", gap:8 }}>
+                        <button className="btn-sm" style={{ flex:1, fontSize:9,
+                          background: stat.amarilla?"rgba(212,184,74,.25)":"rgba(255,255,255,.03)",
+                          borderColor: stat.amarilla?"rgba(212,184,74,.5)":"rgba(255,255,255,.05)",
+                          color: stat.amarilla?"#d4b84a":"#4e6a88" }}
+                          onClick={()=>toggle(pl.id,"amarilla")}>
+                          🟨 Amarilla {stat.amarilla?"✓":""}
+                        </button>
+                        <button className="btn-sm" style={{ flex:1, fontSize:9,
+                          background: stat.roja?"rgba(229,57,53,.2)":"rgba(255,255,255,.03)",
+                          borderColor: stat.roja?"rgba(229,57,53,.4)":"rgba(255,255,255,.05)",
+                          color: stat.roja?"#e8a0a0":"#4e6a88" }}
+                          onClick={()=>toggle(pl.id,"roja")}>
+                          🟥 Roja {stat.roja?"✓":""}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            <div style={{ display:"flex", gap:6, marginTop:8 }}>
+              <button className="btn-sm" style={{ flex:1 }} onClick={()=>setStep("score")}>← Marcador</button>
+              <button className="btn" style={{ flex:2,
+                opacity:(sH===""||sA==="")?.4:1 }}
+                onClick={handleSave}>
+                💾 GUARDAR RESULTADO
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
@@ -677,7 +890,7 @@ function AddPlayerModal({ match, rivals, myPlayers, curMin, onClose, onAddUs, on
 }
 
 // ── Componente tarjeta de partido del torneo rápido (necesita sus propios hooks) ──
-function TrPartidoCard({ p, canEdit, onSave }) {
+const TrPartidoCard = React.memo(function TrPartidoCard({ p, canEdit, onSave });) {
   const { useState } = React;
   const [editando,   setEditando]   = useState(false);
   const [sH,         setSH]         = useState(p.scoreH!==null?String(p.scoreH):"");
@@ -765,7 +978,7 @@ function TrPartidoCard({ p, canEdit, onSave }) {
   );
 }
 
-function MatchCard({ m, champs }) {
+const MatchCard = React.memo(function MatchCard({ m, champs });) {
   const champ = champs && m.champId ? champs.find(c => c.id === m.champId) : null;
   return (
     <div className="mc">
@@ -2466,7 +2679,14 @@ export default function App() {
 
   // ── PUSH NOTIFICATIONS ─────────────────────
   const [pushStatus, setPushStatus] = useState("idle"); // idle | requesting | granted | denied | unsupported
-  const [swUpdate,  setSwUpdate]   = useState(false); // hay una nueva versión disponible
+  const [swUpdate,  setSwUpdate]   = useState(false);
+  const [darkMode,  setDarkMode]   = useState(() => localStorage.getItem("rfc_theme") !== "light");
+
+  // Aplicar clase al body según el modo
+  useEffect(() => {
+    document.body.classList.toggle("light", !darkMode);
+    localStorage.setItem("rfc_theme", darkMode ? "dark" : "light");
+  }, [darkMode]);
 
   // ── Listener de actualizaciones del SW ──
   useEffect(() => {
@@ -2601,10 +2821,7 @@ export default function App() {
         { id:"6003", fecha:"2026-03-28", hora:"17:00", lugar:"Campo B", cats:["Sub-15"], tema:"Táctica defensiva", notas:"Trabajo físico" },
         { id:"6004", fecha:"2026-03-24", hora:"16:00", lugar:"Campo C", cats:["Sub-13"], tema:"Control de balón", notas:"" },
       ];
-      const DCOACHES = [
-        { id:1, name:"Rómulo García", role:"Director Técnico", cat:"Todas", pin:"1111", perms:["inicio","jugadores","asistencia","pagos","calendario","entrenamientos","campeonatos","uniformes","chat","stats","entrenadores","config","partido"] },
-        { id:2, name:"Carlos Mendez", role:"Entrenador Sub-15", cat:"Sub-15", pin:"2222", perms:["inicio","jugadores","asistencia","pagos","calendario","entrenamientos","campeonatos","uniformes","chat","stats","partido"] },
-      ];
+      const DCOACHES = [{ id:99, name:"Demo Entrenador", role:"Director Técnico", cat:"Todas", pin:"1111", perms:["inicio","jugadores","asistencia","pagos","calendario","entrenamientos","campeonatos","uniformes","chat","stats","entrenadores","config","partido"] }];
       const DATT_MATCHES = [
         { matchId:8001, date:"10 Mar 2026", cat:"Sub-15", home:"Rómulo FC", away:"Deportivo Carabobo", convocados:[9001,9004], titulares:[9001,9004], mvp:{ playerId:9001 } },
         { matchId:8002, date:"05 Mar 2026", cat:"Sub-15", home:"Rómulo FC", away:"Atlético Valencia",  convocados:[9001,9004], titulares:[9001],       mvp:{ playerId:9004 } },
@@ -2620,6 +2837,8 @@ export default function App() {
 
     // Jugadores
     unsubs.push(onSnapshot(collection(db, "players"), snap => {
+      // Usar docChanges para actualizaciones incrementales
+      if (snap.metadata.fromCache) return; // ignorar cache inicial
       const data = snap.docs.map(d => ({ ...d.data(), id: d.id }));
       setPlayers(data);
       // Inicializar pay/sanc/att para jugadores nuevos
@@ -2663,14 +2882,25 @@ export default function App() {
 
     // Asistencia
     unsubs.push(onSnapshot(collection(db, "att"), snap => {
-      const data = {};
-      snap.docs.forEach(d => { data[d.id] = d.data(); });
-      setAtt(data);
+      // Solo actualizar los docs que cambiaron (no recrear todo el objeto)
+      setAtt(prev => {
+        const next = { ...prev };
+        snap.docChanges().forEach(change => {
+          if (change.type === "removed") delete next[change.doc.id];
+          else next[change.doc.id] = change.doc.data();
+        });
+        // Primera carga: usar docs completos
+        if (snap.docChanges().length === snap.docs.length) {
+          snap.docs.forEach(d => { next[d.id] = d.data(); });
+        }
+        return next;
+      });
     }));
 
     // Notificaciones
-    unsubs.push(onSnapshot(collection(db, "notifs"), snap => {
-      setNotifs(snap.docs.map(d => ({ ...d.data(), id: d.id })).sort((a,b) => b.ts?.localeCompare?.(a.ts)||0));
+    const notifsQ = query(collection(db, "notifs"), orderBy("ts", "desc"), limit(50));
+    unsubs.push(onSnapshot(notifsQ, snap => {
+      setNotifs(snap.docs.map(d => ({ ...d.data(), id: d.id })));
     }));
 
     // Coaches — solo lee de Firebase, nunca sobreescribe
@@ -2695,10 +2925,9 @@ export default function App() {
     unsubs.push(onSnapshot(collection(db, "champs"), snap => {
       setChamps(snap.docs.map(d => ({ ...d.data(), id: d.id })));
     }));
-    unsubs.push(onSnapshot(collection(db, "chat"), snap => {
-      const msgs = snap.docs.map(d => ({ ...d.data(), id: d.id }));
-      msgs.sort((a,b) => (a.ts||"").localeCompare(b.ts||""));
-      setChatMsgs(msgs);
+    const chatQ = query(collection(db, "chat"), orderBy("ts","asc"), limit(150));
+    unsubs.push(onSnapshot(chatQ, snap => {
+      setChatMsgs(snap.docs.map(d => ({ ...d.data(), id: d.id })));
     }));
     unsubs.push(onSnapshot(collection(db, "att_matches"), snap => {
       setAttMatches(snap.docs.map(d => ({ ...d.data(), id: d.id })));
@@ -2895,19 +3124,36 @@ export default function App() {
   // ── DERIVED ────────────────────────────────
   const isAdmin  = role === "admin";
   const can      = perm => isAdmin && user && Array.isArray(user.perms) && user.perms.includes(perm);
-  const unread   = notifs.filter(n => {
-    const uid = myUID ? myUID() : "admin_dt";
-    return !n.readBy?.[uid];
-  }).length;
+  const unread = useMemo(() => {
+    const uid = isAdmin ? "admin_"+(user?.id||"dt") : String(user?.playerId||"visitor");
+    return notifs.filter(n => !n.readBy?.[uid]).length;
+  }, [notifs, user?.id, user?.playerId, isAdmin]);
 
-  const filtP = players.filter(p => {
+  const filtP = useMemo(() => players.filter(p => {
     const catOk  = !isAdmin || !user || user.cat === "Todas" || p.cat === user.cat;
     const filt   = catF === "Todas" || p.cat === catF;
     const srch   = !search || (p.nombre + " " + p.apellido).toLowerCase().includes(search.toLowerCase());
     return catOk && filt && srch;
-  });
+  }), [players, catF, search, isAdmin, user?.cat]);
 
-  const filtM = (() => {
+  // Mapa de jugadores por categoría — evita filtrar en cada render
+  const playersByCat = useMemo(() => {
+    const map = { "Todas": players };
+    players.forEach(p => {
+      if (!map[p.cat]) map[p.cat] = [];
+      map[p.cat].push(p);
+    });
+    return map;
+  }, [players]);
+
+  // Memoizar sanciones como mapa por id
+  const sancMap = useMemo(() => {
+    const m = {};
+    Object.entries(sanc).forEach(([id,s])=>{ m[id]=s; });
+    return m;
+  }, [sanc]);
+
+  const filtM = useMemo(() => {
     // Inicio de la semana actual (lunes a las 00:00)
     const hoy    = new Date();
     const diaSem = hoy.getDay() === 0 ? 6 : hoy.getDay() - 1; // 0=lun..6=dom
@@ -2962,7 +3208,7 @@ export default function App() {
         if (!da && db_) return 1;
         return 0;
       });
-  })();
+  }, [matches, catF, user?.cat]);
 
   const attCount = attSession ? filtP.filter(p => att[p.id] && att[p.id][attSession] && att[p.id][attSession].present).length : 0;
   const attPct   = filtP.length && attSession ? Math.round(attCount / filtP.length * 100) : 0;
@@ -5015,6 +5261,7 @@ export default function App() {
                     </div>
                   );
                 })()}
+                <div className="ico-btn" onClick={()=>setDarkMode(d=>!d)} title="Cambiar tema" style={{fontSize:14}}>{darkMode?"☀️":"🌙"}</div>
                 <div className="ico-btn" onClick={logout} title="Salir">🚪</div>
               </div>
             </div>
@@ -9067,6 +9314,7 @@ export default function App() {
               <div className="ico-btn" style={{ position:"relative" }} onClick={() => setShowNotif(v => !v)}>
                 🔔{unread > 0 && <span className="rdot" />}
               </div>
+              <div className="ico-btn" onClick={()=>setDarkMode(d=>!d)} style={{fontSize:14}}>{darkMode?"☀️":"🌙"}</div>
               <div className="ico-btn" onClick={logout}>🚪</div>
             </div>
           </div>
@@ -10172,151 +10420,41 @@ export default function App() {
       })()}
 
       {/* ── MODAL RESULTADO RÁPIDO ── */}
-      {quickResult && (() => {
-        const m = quickResult;
-        const catPlayers = players.filter(p => p.cat === m.cat);
-
-        function saveQuickResult() {
-          const sH = parseInt(qr.scoreH)||0;
-          const sA = parseInt(qr.scoreA)||0;
-
-          // Armar playerStats desde los goleadores seleccionados
-          const playerStats = {};
-          qr.goleadores.forEach(pid => {
-            if (!playerStats[pid]) playerStats[pid] = { goles:0, asistencias:0 };
-            playerStats[pid].goles++;
-          });
-
-          const matchData = { ...m, scoreH:sH, scoreA:sA, status:"finalizado",
-            events:[], playerStats };
-          safeSetDoc(doc(db,"matches",String(m.id)), matchData);
-
-          // Actualizar stats acumuladas de jugadores
-          Object.entries(playerStats).forEach(([pid, ps]) => {
-            const pl = players.find(x=>String(x.id)===String(pid));
-            if (!pl) return;
-            const cur = pl.stats||{goles:0,asistencias:0,partidos:0};
-            safeSetDoc(doc(db,"players",String(pid)), { ...pl, stats:{
-              goles:       (cur.goles||0)+(ps.goles||0),
-              asistencias: (cur.asistencias||0),
-              partidos:    (cur.partidos||0)+1,
-            }});
-          });
-          // Jugadores sin gol también suman 1 partido
-          catPlayers.forEach(pl => {
-            if (playerStats[pl.id]) return;
-            const cur = pl.stats||{goles:0,asistencias:0,partidos:0};
-            safeSetDoc(doc(db,"players",String(pl.id)), { ...pl, stats:{
-              ...cur, partidos:(cur.partidos||0)+1
-            }});
-          });
-
-          // Notificación
-          const res = sH>sA?"🏆 VICTORIA":sH<sA?"😔 DERROTA":"🤝 EMPATE";
-          addNotif(res+" · "+m.home+" "+sH+"-"+sA+" "+m.away, "calendario", "cat:"+m.cat, "resultado");
-
-          setQuickResult(null);
-          setQr({ scoreH:"", scoreA:"", goleadores:[] });
-          setQrInput("");
-        }
-
-        return (
-          <div className="ov" onClick={e=>{ if(e.target.className==="ov") setQuickResult(null); }}>
-            <div className="modal" style={{ borderTop:"3px solid #d4b84a" }}>
-              <div className="mt2" style={{ color:"#d4b84a" }}>
-                📋 Registrar Resultado
-                <span className="mx" onClick={()=>setQuickResult(null)}>✕</span>
-              </div>
-
-              {/* Info del partido */}
-              <div style={{ background:"rgba(21,101,192,.07)", borderRadius:8,
-                padding:"9px 12px", marginBottom:12, textAlign:"center" }}>
-                <div style={{ fontSize:10, fontWeight:600, color:"#c0cfe0" }}>
-                  {m.home} vs {m.away}
-                </div>
-                <div style={{ fontSize:8, color:"#4e6a88", marginTop:2 }}>
-                  {m.date} · {m.cat} · {m.field}
-                </div>
-              </div>
-
-              {/* Marcador */}
-              <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:14 }}>
-                <div style={{ flex:1 }}>
-                  <div style={{ fontSize:8, color:"#4e6a88", marginBottom:4, textAlign:"center" }}>{m.home}</div>
-                  <input className="inp" type="number" min="0" value={qr.scoreH}
-                    onChange={e=>setQr(v=>({...v,scoreH:e.target.value}))}
-                    style={{ textAlign:"center", fontSize:28, fontFamily:"'Bebas Neue',sans-serif",
-                      color:"#7ab3e0", padding:"8px 0" }}/>
-                </div>
-                <div style={{ fontSize:20, color:"#4e6a88", fontFamily:"'Bebas Neue',sans-serif",
-                  paddingTop:18 }}>—</div>
-                <div style={{ flex:1 }}>
-                  <div style={{ fontSize:8, color:"#4e6a88", marginBottom:4, textAlign:"center" }}>{m.away}</div>
-                  <input className="inp" type="number" min="0" value={qr.scoreA}
-                    onChange={e=>setQr(v=>({...v,scoreA:e.target.value}))}
-                    style={{ textAlign:"center", fontSize:28, fontFamily:"'Bebas Neue',sans-serif",
-                      color:"#e8a0a0", padding:"8px 0" }}/>
-                </div>
-              </div>
-
-              {/* Goleadores de RFC */}
-              <div style={{ marginBottom:12 }}>
-                <div style={{ fontSize:8.5, fontWeight:600, color:"#7ab3e0", marginBottom:6 }}>
-                  ⚽ Goleadores de {m.home}
-                </div>
-                {/* Jugadores seleccionados como goleadores */}
-                {qr.goleadores.length > 0 && (
-                  <div style={{ display:"flex", flexWrap:"wrap", gap:4, marginBottom:8 }}>
-                    {[...new Set(qr.goleadores)].map(pid => {
-                      const pl = catPlayers.find(x=>String(x.id)===String(pid));
-                      const cnt = qr.goleadores.filter(x=>x===pid).length;
-                      return pl ? (
-                        <div key={pid} style={{ background:"rgba(33,150,243,.12)",
-                          border:"1px solid rgba(33,150,243,.25)", borderRadius:20,
-                          padding:"3px 10px", fontSize:8.5, color:"#7ab3e0",
-                          display:"flex", alignItems:"center", gap:5 }}>
-                          ⚽{cnt > 1 ? " x"+cnt : ""} {pl.nombre} {pl.apellido}
-                          <span style={{ cursor:"pointer", color:"#e8a0a0", fontSize:11 }}
-                            onClick={()=>setQr(v=>({...v, goleadores:
-                              (() => { const arr=[...v.goleadores]; arr.splice(arr.lastIndexOf(pid),1); return arr; })()
-                            }))}>✕</span>
-                        </div>
-                      ) : null;
-                    })}
-                  </div>
-                )}
-                {/* Grid de jugadores para seleccionar */}
-                <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:4 }}>
-                  {catPlayers.map(pl => (
-                    <div key={pl.id}
-                      onClick={()=>setQr(v=>({...v, goleadores:[...v.goleadores, String(pl.id)]}))}
-                      style={{ background:"rgba(21,101,192,.08)", border:"1px solid rgba(33,150,243,.1)",
-                        borderRadius:7, padding:"6px 5px", textAlign:"center", cursor:"pointer" }}>
-                      <div style={{ fontSize:9, fontWeight:600, color:"#c0cfe0",
-                        overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-                        {pl.nombre}
-                      </div>
-                      <div style={{ fontSize:7.5, color:"#4e6a88" }}>#{pl.num}</div>
-                    </div>
-                  ))}
-                </div>
-                {catPlayers.length === 0 && (
-                  <div style={{ fontSize:8, color:"#3a5068", textAlign:"center", padding:8 }}>
-                    Sin jugadores registrados en {m.cat}
-                  </div>
-                )}
-              </div>
-
-              {/* Botón guardar */}
-              <button className="btn" style={{ width:"100%",
-                opacity: (qr.scoreH===""||qr.scoreA==="") ? 0.4 : 1 }}
-                onClick={saveQuickResult}>
-                💾 GUARDAR RESULTADO
-              </button>
-            </div>
-          </div>
-        );
-      })()}
+      {quickResult && (
+        <QuickResultModal
+          m={quickResult}
+          players={players}
+          onClose={()=>{ setQuickResult(null); setQr({scoreH:"",scoreA:"",goleadores:[]}); }}
+          onSave={(sH,sA,playerStats,events)=>{
+            const matchData={...quickResult,scoreH:sH,scoreA:sA,status:"finalizado",events,playerStats};
+            safeSetDoc(doc(db,"matches",String(quickResult.id)),matchData);
+            // Actualizar stats de cada jugador
+            const catPls=players.filter(p=>p.cat===quickResult.cat);
+            catPls.forEach(pl=>{
+              const ps=playerStats[pl.id]||{};
+              const cur=pl.stats||{goles:0,asistencias:0,partidos:0};
+              safeSetDoc(doc(db,"players",String(pl.id)),{...pl,stats:{
+                goles:(cur.goles||0)+(ps.goles||0),
+                asistencias:(cur.asistencias||0)+(ps.asistencias||0),
+                partidos:(cur.partidos||0)+1,
+              }});
+              // Tarjetas
+              if (ps.amarilla||ps.roja) {
+                const sc=sanc[pl.id]||{yellows:0,reds:0,suspended:false};
+                safeSetDoc(doc(db,"sanc",String(pl.id)),{
+                  ...sc,
+                  yellows:(sc.yellows||0)+(ps.amarilla?1:0),
+                  reds:(sc.reds||0)+(ps.roja?1:0),
+                  suspended:ps.roja?true:sc.suspended,
+                });
+              }
+            });
+            const res=sH>sA?"🏆 VICTORIA":sH<sA?"😔 DERROTA":"🤝 EMPATE";
+            addNotif(res+" · "+quickResult.home+" "+sH+"-"+sA+" "+quickResult.away,"calendario","cat:"+quickResult.cat,"resultado");
+            setQuickResult(null);
+          }}
+        />
+      )}
 
       {/* ── MODAL EXENCIÓN DE MES ── */}
       {exentoModal && (() => {
