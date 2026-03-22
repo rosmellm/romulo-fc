@@ -579,7 +579,7 @@ body{background:var(--bg);color:var(--txt);font-family:'DM Sans',sans-serif;min-
 
 // ─── SHARED COMPONENTS ────────────────────────────────────────
 
-const Avatar = React.memo(function Avatar({ p, size });) {
+const Avatar = React.memo(function Avatar({ p, size }) {
   const sz = size || 32;
   const bg = p ? (p.col || "#1565C0") : "#1565C0";
   const letter = p ? p.nombre[0] : "?";
@@ -588,7 +588,7 @@ const Avatar = React.memo(function Avatar({ p, size });) {
       {p && p.foto ? <img src={p.foto} alt="" /> : letter}
     </div>
   );
-}
+});
 
 function FoulDots({ count, max }) {
   const m = max || 5;
@@ -604,7 +604,7 @@ function FoulDots({ count, max }) {
   );
 }
 
-const ConfirmDialog=React.memo(function ConfirmDialog({ cfg, onClose });) {
+const ConfirmDialog=React.memo(function ConfirmDialog({ cfg, onClose })) {
   if (!cfg) return null;
   return (
     <div className="aov">
@@ -630,7 +630,7 @@ const ConfirmDialog=React.memo(function ConfirmDialog({ cfg, onClose });) {
 }
 
 // ── Modal Resultado Rápido — igual que live match ────────────────────────────
-const QuickResultModal = React.memo(function QuickResultModal({ m, players, onClose, onSave });) {
+const QuickResultModal = React.memo(function QuickResultModal({ m, players, onClose, onSave })) {
   const { useState } = React;
   const catPls = players.filter(p => p.cat === m.cat);
   const [sH, setSH] = useState("");
@@ -821,7 +821,7 @@ const QuickResultModal = React.memo(function QuickResultModal({ m, players, onCl
       </div>
     </div>
   );
-}
+});
 
 // ── Modal para agregar jugador en pleno partido ──────────────────────────────
 function AddPlayerModal({ match, rivals, myPlayers, curMin, onClose, onAddUs, onAddThem }) {
@@ -890,7 +890,7 @@ function AddPlayerModal({ match, rivals, myPlayers, curMin, onClose, onAddUs, on
 }
 
 // ── Componente tarjeta de partido del torneo rápido (necesita sus propios hooks) ──
-const TrPartidoCard = React.memo(function TrPartidoCard({ p, canEdit, onSave });) {
+const TrPartidoCard = React.memo(function TrPartidoCard({ p, canEdit, onSave }) {
   const { useState } = React;
   const [editando,   setEditando]   = useState(false);
   const [sH,         setSH]         = useState(p.scoreH!==null?String(p.scoreH):"");
@@ -978,7 +978,7 @@ const TrPartidoCard = React.memo(function TrPartidoCard({ p, canEdit, onSave });
   );
 }
 
-const MatchCard = React.memo(function MatchCard({ m, champs });) {
+const MatchCard = React.memo(function MatchCard({ m, champs })) {
   const champ = champs && m.champId ? champs.find(c => c.id === m.champId) : null;
   return (
     <div className="mc">
