@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo, useCallback } from "react";
+import { useState, useRef, useEffect } from "react";
 
 // ─── CONSTANTS ────────────────────────────────────────────────
 const MONTHS = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
@@ -324,10 +324,14 @@ const fbApp     = initializeApp(firebaseConfig);
 const db        = getFirestore(fbApp);
 const messaging = getMessaging(fbApp);
 
-// ── Modo offline: persistencia local con IndexedDB (async para no bloquear) ──
-setTimeout(() => {
-  enableIndexedDbPersistence(db).catch(()=>{});
-}, 100);
+// ── Modo offline: persistencia local con IndexedDB ──
+enableIndexedDbPersistence(db).catch(err => {
+  if (err.code === "failed-precondition") {
+    console.warn("Offline: múltiples pestañas abiertas");
+  } else if (err.code === "unimplemented") {
+    console.warn("Offline: navegador no soportado");
+  }
+});
 
 // VAPID key — la obtienes en Firebase Console → Project Settings → Cloud Messaging → Web Push certificates
 const VAPID_KEY = "BEbMBO0z6wJn_Go07XmMsZuujs7Y0n3cm-WmAPCkXubfzs3chUBJpwLCDw_fLY89MJ5Zzauq7-3ZS7zswC4z08s";
@@ -375,7 +379,7 @@ body.light {
 
 body{background:var(--bg);color:var(--txt);font-family:'DM Sans',sans-serif;min-height:100vh;font-size:13px;letter-spacing:.01em;transition:background .2s,color .2s;}
 .app{max-width:430px;margin:0 auto;min-height:100vh;background:var(--bg);position:relative;}
-.hdr{background:var(--hdr);padding:11px 15px 9px;border-bottom:1px solid rgba(33,150,243,.07);position:sticky;top:0;z-index:100;backdrop-filter:blur(10px);transform:translateZ(0);will-change:transform;}
+.hdr{background:var(--hdr);padding:11px 15px 9px;border-bottom:1px solid rgba(33,150,243,.07);position:sticky;top:0;z-index:100;backdrop-filter:blur(10px);}
 .hdr-row{display:flex;justify-content:space-between;align-items:center;}
 .logo{font-family:'Bebas Neue',sans-serif;font-size:22px;font-weight:400;letter-spacing:2px;}
 .lb{color:#2196F3;}.lr{color:#E53935;}
@@ -390,7 +394,7 @@ body{background:var(--bg);color:var(--txt);font-family:'DM Sans',sans-serif;min-
 .nav::-webkit-scrollbar{display:none;}
 .nb{flex-shrink:0;padding:4px 11px;border-radius:14px;border:1px solid var(--brd);background:transparent;color:var(--txt3);font-family:'DM Sans',sans-serif;font-size:10px;font-weight:400;cursor:pointer;white-space:nowrap;}
 .nb.ab{background:#1565C0;border-color:#1565C0;color:#fff;font-weight:500;}
-.cnt{padding:12px 14px 100px;contain:style layout;}
+.cnt{padding:12px 14px 100px;}
 .card{background:var(--card);border:1px solid var(--brd);border-radius:12px;padding:12px;margin-bottom:9px;}
 .card-r{border-color:rgba(229,57,53,.12);}
 .ch{display:flex;justify-content:space-between;align-items:center;margin-bottom:9px;}
@@ -579,7 +583,7 @@ body{background:var(--bg);color:var(--txt);font-family:'DM Sans',sans-serif;min-
 
 // ─── SHARED COMPONENTS ────────────────────────────────────────
 
-const Avatar = React.memo(function Avatar({ p, size }) {
+function Avatar({ p, size }) {
   const sz = size || 32;
   const bg = p ? (p.col || "#1565C0") : "#1565C0";
   const letter = p ? p.nombre[0] : "?";
@@ -588,7 +592,7 @@ const Avatar = React.memo(function Avatar({ p, size }) {
       {p && p.foto ? <img src={p.foto} alt="" /> : letter}
     </div>
   );
-});
+}
 
 function FoulDots({ count, max }) {
   const m = max || 5;
@@ -604,7 +608,7 @@ function FoulDots({ count, max }) {
   );
 }
 
-const ConfirmDialog=React.memo(function ConfirmDialog({ cfg, onClose }) {
+function ConfirmDialog({ cfg, onClose }) {
   if (!cfg) return null;
   return (
     <div className="aov">
@@ -627,10 +631,10 @@ const ConfirmDialog=React.memo(function ConfirmDialog({ cfg, onClose }) {
       </div>
     </div>
   );
-});
+}
 
 // ── Modal Resultado Rápido — igual que live match ────────────────────────────
-const QuickResultModal = React.memo(function QuickResultModal({ m, players, onClose, onSave }) {
+function QuickResultModal({ m, players, onClose, onSave }) {
   const { useState } = React;
   const catPls = players.filter(p => p.cat === m.cat);
   const [sH, setSH] = useState("");
@@ -821,7 +825,7 @@ const QuickResultModal = React.memo(function QuickResultModal({ m, players, onCl
       </div>
     </div>
   );
-});
+}
 
 // ── Modal para agregar jugador en pleno partido ──────────────────────────────
 function AddPlayerModal({ match, rivals, myPlayers, curMin, onClose, onAddUs, onAddThem }) {
@@ -3120,16 +3124,16 @@ export default function App() {
     return !n.readBy?.[uid];
   }).length;
 
-  const filtP = useMemo(() => players.filter(p => {
+  const filtP = players.filter(p => {
     const catOk  = !isAdmin || !user || user.cat === "Todas" || p.cat === user.cat;
     const filt   = catF === "Todas" || p.cat === catF;
     const srch   = !search || (p.nombre + " " + p.apellido).toLowerCase().includes(search.toLowerCase());
     return catOk && filt && srch;
-  }), [players, catF, search, isAdmin, user?.cat]);
+  });
 
 
 
-  const filtM = useMemo(() => {
+  const filtM = (() => {
     // Inicio de la semana actual (lunes a las 00:00)
     const hoy    = new Date();
     const diaSem = hoy.getDay() === 0 ? 6 : hoy.getDay() - 1; // 0=lun..6=dom
@@ -3184,7 +3188,7 @@ export default function App() {
         if (!da && db_) return 1;
         return 0;
       });
-  }, [matches, catF, user?.cat]);
+  })();
 
   const attCount = attSession ? filtP.filter(p => att[p.id] && att[p.id][attSession] && att[p.id][attSession].present).length : 0;
   const attPct   = filtP.length && attSession ? Math.round(attCount / filtP.length * 100) : 0;
