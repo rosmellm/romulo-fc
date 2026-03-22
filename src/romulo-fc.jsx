@@ -343,7 +343,7 @@ const CSS = `
 
 /* ── Variables modo oscuro (default) ── */
 :root {
-  --bg:        #04060c;
+  --bg:        var(--bg);
   --bg2:       #06091a;
   --bg3:       #090d1a;
   --bg4:       #0a0f1e;
@@ -379,7 +379,7 @@ body.light {
 
 body{background:var(--bg);color:var(--txt);font-family:'DM Sans',sans-serif;min-height:100vh;font-size:13px;letter-spacing:.01em;transition:background .2s,color .2s;}
 .app{max-width:430px;margin:0 auto;min-height:100vh;background:var(--bg);position:relative;}
-.hdr{background:var(--hdr);padding:11px 15px 9px;border-bottom:1px solid rgba(33,150,243,.07);position:sticky;top:0;z-index:100;backdrop-filter:blur(10px);}
+.hdr{background:var(--hdr);padding:11px 15px 9px;border-bottom:1px solid var(--brd);position:sticky;top:0;z-index:100;backdrop-filter:blur(10px);}
 .hdr-row{display:flex;justify-content:space-between;align-items:center;}
 .logo{font-family:'Bebas Neue',sans-serif;font-size:22px;font-weight:400;letter-spacing:2px;}
 .lb{color:#2196F3;}.lr{color:#E53935;}
@@ -407,7 +407,7 @@ body{background:var(--bg);color:var(--txt);font-family:'DM Sans',sans-serif;min-
 .bg-n{background:rgba(255,255,255,.03);color:#3a5068;border:1px solid rgba(255,255,255,.05);}
 .sr3{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:10px;}
 .sr4{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-bottom:10px;}
-.sb{background:#090d1a;border:1px solid rgba(33,150,243,.08);border-radius:9px;padding:9px 5px;text-align:center;}
+.sb{background:var(--inp);border:1px solid var(--brd);border-radius:9px;padding:9px 5px;text-align:center;}
 .sn{font-family:'Bebas Neue',sans-serif;font-size:24px;font-weight:400;line-height:1;}
 .sl{font-size:7px;color:#3a5068;margin-top:1px;text-transform:uppercase;letter-spacing:.3px;font-family:'DM Sans',sans-serif;}
 .pr{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--brd);}
@@ -419,31 +419,31 @@ body{background:var(--bg);color:var(--txt);font-family:'DM Sans',sans-serif;min-
 .ps{font-size:8px;color:#3a5068;}
 .ck{width:23px;height:23px;border-radius:6px;border:1.5px solid rgba(33,150,243,.15);background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;}
 .ck.on{background:#1565C0;border-color:#1565C0;}
-.pb{height:3px;background:#090d1a;border-radius:2px;overflow:hidden;margin-top:3px;}
+.pb{height:3px;background:var(--inp);border-radius:2px;overflow:hidden;margin-top:3px;}
 .pf{height:100%;border-radius:2px;}
 .pf-b{background:linear-gradient(90deg,#0D47A1,#1976D2);}
 .pf-r{background:linear-gradient(90deg,#B71C1C,#E53935);}
-.mc{background:#090d1a;border-radius:9px;padding:10px;margin-bottom:7px;border:1px solid rgba(33,150,243,.08);}
+.mc{background:var(--inp);border-radius:9px;padding:10px;margin-bottom:7px;border:1px solid var(--brd);}
 .mt{display:flex;justify-content:space-between;align-items:center;gap:4px;}
 .tn{font-family:'Bebas Neue',sans-serif;font-size:13px;font-weight:400;flex:1;}
 .tn-h{text-align:left;}.tn-a{text-align:right;}
-.sc{background:#06091a;border:1px solid rgba(33,150,243,.1);border-radius:6px;padding:3px 9px;font-family:'Bebas Neue',sans-serif;font-size:17px;font-weight:400;color:#2196F3;flex-shrink:0;}
+.sc{background:var(--card);border:1px solid rgba(33,150,243,.1);border-radius:6px;padding:3px 9px;font-family:'Bebas Neue',sans-serif;font-size:17px;font-weight:400;color:#2196F3;flex-shrink:0;}
 .mm{display:flex;flex-wrap:wrap;gap:3px;margin-top:5px;}
-.mi{font-size:8px;color:#3a5068;background:#06091a;border-radius:4px;padding:2px 5px;}
+.mi{font-size:8px;color:#3a5068;background:var(--card);border-radius:4px;padding:2px 5px;}
 .dtabs{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:9px;}
-.dt{padding:4px 9px;border-radius:7px;font-size:9px;cursor:pointer;border:1px solid rgba(33,150,243,.08);background:transparent;color:#3a5068;font-family:'DM Sans',sans-serif;}
+.dt{padding:4px 9px;border-radius:7px;font-size:9px;cursor:pointer;border:1px solid var(--brd);background:transparent;color:#3a5068;font-family:'DM Sans',sans-serif;}
 .dt.da{border-color:#1565C0;color:#7ab3e0;background:rgba(21,101,192,.08);}
-.ptabs{display:flex;border-radius:8px;overflow:hidden;border:1px solid rgba(33,150,243,.08);margin-bottom:10px;}
+.ptabs{display:flex;border-radius:8px;overflow:hidden;border:1px solid var(--brd);margin-bottom:10px;}
 .pt{flex:1;padding:7px 3px;text-align:center;font-size:9px;font-weight:400;cursor:pointer;color:#3a5068;font-family:'DM Sans',sans-serif;}
 .pt.pa{background:#1565C0;color:#fff;font-weight:500;}
 .mgrid{display:grid;grid-template-columns:repeat(6,1fr);gap:3px;margin-bottom:8px;}
-.mcell{background:#090d1a;border:1px solid rgba(33,150,243,.08);border-radius:5px;padding:4px 2px;text-align:center;cursor:pointer;}
+.mcell{background:var(--inp);border:1px solid var(--brd);border-radius:5px;padding:4px 2px;text-align:center;cursor:pointer;}
 .mcell.mp{background:rgba(21,101,192,.08);border-color:rgba(33,150,243,.18);}
 .mcell.mup{background:rgba(229,57,53,.05);border-color:rgba(229,57,53,.12);}
 .mcell.mex{background:rgba(212,184,74,.07);border-color:rgba(212,184,74,.25);}
 .mclbl{font-size:7px;color:#3a5068;font-family:'DM Sans',sans-serif;}
 .mcico{font-size:10px;margin-top:1px;}
-.inp{width:100%;background:#090d1a;border:1px solid rgba(33,150,243,.1);border-radius:8px;padding:7px 10px;color:#afc4d8;font-family:'DM Sans',sans-serif;font-size:11px;outline:none;}
+.inp{width:100%;background:var(--inp);border:1px solid rgba(33,150,243,.1);border-radius:8px;padding:7px 10px;color:var(--txt);font-family:'DM Sans',sans-serif;font-size:11px;outline:none;}
 .inp:focus{border-color:#1565C0;}
 .inp::placeholder{color:#3a5068;}
 .inp-wrap{margin-bottom:7px;}
@@ -467,7 +467,7 @@ body{background:var(--bg);color:var(--txt);font-family:'DM Sans',sans-serif;min-
 .mt2{font-family:'Bebas Neue',sans-serif;font-size:14px;font-weight:400;letter-spacing:.3px;margin-bottom:11px;display:flex;justify-content:space-between;align-items:center;}
 .mx{font-size:16px;cursor:pointer;color:#3a5068;}
 .aov{position:fixed;inset:0;background:rgba(0,0,0,.78);z-index:600;display:flex;align-items:center;justify-content:center;padding:18px;}
-.abox{background:#06091a;border:1px solid rgba(33,150,243,.1);border-radius:12px;padding:18px 16px;width:100%;max-width:300px;}
+.abox{background:var(--card);border:1px solid rgba(33,150,243,.1);border-radius:12px;padding:18px 16px;width:100%;max-width:300px;}
 .at{font-family:'Bebas Neue',sans-serif;font-size:14px;font-weight:400;letter-spacing:.3px;margin-bottom:6px;}
 .am{font-size:10px;color:#3a5068;line-height:1.5;margin-bottom:14px;font-family:'DM Sans',sans-serif;}
 .ab2{display:flex;gap:6px;}
@@ -481,9 +481,9 @@ body{background:var(--bg);color:var(--txt);font-family:'DM Sans',sans-serif;min-
 .notif-row:last-child{border-bottom:none;}
 .hist-row{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.02);font-size:9px;font-family:'DM Sans',sans-serif;}
 .hist-row:last-child{border-bottom:none;}
-.photo-up{width:52px;height:52px;border-radius:50%;background:#090d1a;border:2px dashed rgba(33,150,243,.15);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:17px;position:relative;overflow:hidden;}
+.photo-up{width:52px;height:52px;border-radius:50%;background:var(--inp);border:2px dashed rgba(33,150,243,.15);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:17px;position:relative;overflow:hidden;}
 .photo-up img{width:100%;height:100%;object-fit:cover;position:absolute;border-radius:50%;}
-.hero{background:#090d1a;border:1px solid rgba(33,150,243,.08);border-radius:12px;padding:14px;margin-bottom:9px;text-align:center;}
+.hero{background:var(--inp);border:1px solid var(--brd);border-radius:12px;padding:14px;margin-bottom:9px;text-align:center;}
 .hero-av{width:52px;height:52px;border-radius:50%;margin:0 auto 7px;display:flex;align-items:center;justify-content:center;font-family:'Bebas Neue',sans-serif;font-size:20px;font-weight:400;color:#fff;border:2px solid #1565C0;overflow:hidden;}
 .hero-av img{width:100%;height:100%;object-fit:cover;}
 .hero-name{font-family:'Bebas Neue',sans-serif;font-size:18px;font-weight:400;}
@@ -492,30 +492,30 @@ body{background:var(--bg);color:var(--txt);font-family:'DM Sans',sans-serif;min-
 .crow:last-child{border-bottom:none;}
 .perms{display:flex;gap:3px;flex-wrap:wrap;margin-top:3px;}
 .perm{font-size:7px;padding:1px 5px;border-radius:3px;background:rgba(33,150,243,.06);color:#5a8ab0;border:1px solid rgba(33,150,243,.1);font-family:'DM Sans',sans-serif;}
-.login{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:22px;background:radial-gradient(ellipse at 20% 25%,rgba(13,71,161,.15) 0%,transparent 50%),radial-gradient(ellipse at 80% 75%,rgba(183,28,28,.1) 0%,transparent 50%),#04060c;}
+.login{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:22px;background:radial-gradient(ellipse at 20% 25%,rgba(13,71,161,.15) 0%,transparent 50%),radial-gradient(ellipse at 80% 75%,rgba(183,28,28,.1) 0%,transparent 50%),var(--bg);}
 .login-logo{font-family:'Bebas Neue',sans-serif;font-size:52px;font-weight:400;letter-spacing:6px;margin-bottom:3px;text-align:center;}
 .login-sub{font-size:7.5px;color:#3a5068;letter-spacing:2px;text-transform:uppercase;margin-bottom:26px;text-align:center;font-family:'DM Sans',sans-serif;}
-.lcard{width:100%;max-width:370px;background:#06091a;border:1px solid rgba(33,150,243,.1);border-radius:14px;padding:16px 14px;}
+.lcard{width:100%;max-width:370px;background:var(--card);border:1px solid rgba(33,150,243,.1);border-radius:14px;padding:16px 14px;}
 .ltitle{font-family:'Bebas Neue',sans-serif;font-size:20px;font-weight:400;letter-spacing:1px;margin-bottom:10px;}
 .rgrid{display:grid;grid-template-columns:1fr 1fr;gap:6px;}
-.ropt{padding:10px 7px;background:#090d1a;border:1px solid rgba(33,150,243,.08);border-radius:9px;cursor:pointer;text-align:center;}
+.ropt{padding:10px 7px;background:var(--inp);border:1px solid var(--brd);border-radius:9px;cursor:pointer;text-align:center;}
 .ropt:hover,.ropt.rsel{border-color:#1565C0;background:rgba(21,101,192,.07);}
 .ro-ico{font-size:18px;margin-bottom:3px;}
 .ro-lbl{font-size:9px;font-weight:500;font-family:'DM Sans',sans-serif;}
 .ro-sub{font-size:7px;color:#3a5068;margin-top:1px;font-family:'DM Sans',sans-serif;}
 .clist{display:flex;flex-direction:column;gap:4px;margin-bottom:9px;max-height:180px;overflow-y:auto;}
-.citem{padding:7px 10px;background:#090d1a;border:1px solid rgba(33,150,243,.08);border-radius:7px;cursor:pointer;font-size:10px;display:flex;justify-content:space-between;align-items:center;font-family:'DM Sans',sans-serif;}
+.citem{padding:7px 10px;background:var(--inp);border:1px solid var(--brd);border-radius:7px;cursor:pointer;font-size:10px;display:flex;justify-content:space-between;align-items:center;font-family:'DM Sans',sans-serif;}
 .citem:hover,.citem.csel{border-color:#1565C0;color:#7ab3e0;}
 .ci-role{font-size:7px;color:#3a5068;}
-.linp{width:100%;background:#090d1a;border:1px solid rgba(33,150,243,.1);border-radius:8px;padding:8px 10px;color:#afc4d8;font-family:'DM Sans',sans-serif;font-size:11px;margin-bottom:6px;outline:none;}
+.linp{width:100%;background:var(--inp);border:1px solid rgba(33,150,243,.1);border-radius:8px;padding:8px 10px;color:var(--txt);font-family:'DM Sans',sans-serif;font-size:11px;margin-bottom:6px;outline:none;}
 .linp:focus{border-color:#1565C0;}
 .linp::placeholder{color:#3a5068;}
 .lbtn{width:100%;background:#1565C0;border:none;border-radius:8px;padding:10px;color:#fff;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:500;letter-spacing:.3px;cursor:pointer;}
 .lerr{font-size:9px;color:#e8a0a0;margin-top:5px;text-align:center;font-family:'DM Sans',sans-serif;}
 .back{font-size:9px;color:#3a5068;cursor:pointer;text-align:center;margin-top:7px;text-decoration:underline;font-family:'DM Sans',sans-serif;}
 .hint{font-size:7.5px;color:#3a5068;margin-top:5px;text-align:center;font-family:'DM Sans',sans-serif;}
-.live-hdr{background:rgba(4,6,12,.98);padding:8px 14px 6px;border-bottom:1px solid rgba(33,150,243,.07);position:sticky;top:0;z-index:50;}
-.scoreboard{padding:10px 14px 8px;background:linear-gradient(180deg,rgba(6,9,26,1),rgba(4,6,12,.97));border-bottom:1px solid rgba(33,150,243,.07);}
+.live-hdr{background:rgba(4,6,12,.98);padding:8px 14px 6px;border-bottom:1px solid var(--brd);position:sticky;top:0;z-index:50;}
+.scoreboard{padding:10px 14px 8px;background:linear-gradient(180deg,rgba(6,9,26,1),rgba(4,6,12,.97));border-bottom:1px solid var(--brd);}
 .period-lbl{text-align:center;font-size:7px;font-weight:400;letter-spacing:2px;text-transform:uppercase;color:#3a5068;margin-bottom:5px;font-family:'DM Sans',sans-serif;}
 .score-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px;}
 .score-team{font-family:'Bebas Neue',sans-serif;font-size:12px;font-weight:400;flex:1;color:#5a7a94;}
@@ -534,7 +534,7 @@ body{background:var(--bg);color:var(--txt);font-family:'DM Sans',sans-serif;min-
 .tm-ok{background:rgba(21,101,192,.08);color:#7ab3e0;border:1px solid rgba(33,150,243,.15);}
 .tm-used{background:rgba(229,57,53,.06);color:#e8a0a0;border:1px solid rgba(229,57,53,.12);opacity:.6;}
 .fgrid{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:8px;}
-.fcard{background:#090d1a;border:1px solid rgba(33,150,243,.08);border-radius:9px;padding:8px 10px;}
+.fcard{background:var(--inp);border:1px solid var(--brd);border-radius:9px;padding:8px 10px;}
 .ftitle{font-size:7px;font-weight:400;text-transform:uppercase;letter-spacing:.5px;color:#3a5068;margin-bottom:4px;font-family:'DM Sans',sans-serif;}
 .fcount{font-family:'Bebas Neue',sans-serif;font-size:21px;font-weight:400;line-height:1;margin-bottom:4px;}
 .fdots{display:flex;gap:3px;}
@@ -543,7 +543,7 @@ body{background:var(--bg);color:var(--txt);font-family:'DM Sans',sans-serif;min-
 .fdot.fwn{background:#d4b84a;border-color:#d4b84a;}
 .fnote{font-size:7px;margin-top:3px;font-family:'DM Sans',sans-serif;}
 .abgrid{display:grid;grid-template-columns:1fr 1fr;gap:5px;padding:0 14px;margin-bottom:8px;}
-.abtn{padding:9px 5px;border-radius:8px;border:1px solid rgba(33,150,243,.08);background:#090d1a;color:#afc4d8;font-size:9px;font-weight:400;cursor:pointer;font-family:'DM Sans',sans-serif;text-align:center;}
+.abtn{padding:9px 5px;border-radius:8px;border:1px solid var(--brd);background:var(--inp);color:var(--txt);font-size:9px;font-weight:400;cursor:pointer;font-family:'DM Sans',sans-serif;text-align:center;}
 .abtn:active{transform:scale(.96);}
 .abtn-b{background:rgba(21,101,192,.12);border-color:rgba(33,150,243,.2);color:#7ab3e0;}
 .abtn-r{background:rgba(183,28,28,.12);border-color:rgba(229,57,53,.2);color:#e8a0a0;}
@@ -552,16 +552,16 @@ body{background:var(--bg);color:var(--txt);font-family:'DM Sans',sans-serif;min-
 .abtn-dim{opacity:.3;pointer-events:none;}
 .abtn-full{grid-column:1/-1;}
 .psgrid{display:grid;grid-template-columns:1fr 1fr;gap:5px;max-height:220px;overflow-y:auto;margin:6px 0;}
-.psbtn{background:#090d1a;border:1px solid rgba(33,150,243,.08);border-radius:8px;padding:8px 7px;cursor:pointer;display:flex;align-items:center;gap:6px;}
+.psbtn{background:var(--inp);border:1px solid var(--brd);border-radius:8px;padding:8px 7px;cursor:pointer;display:flex;align-items:center;gap:6px;}
 .psbtn.pssel{border-color:#1565C0;background:rgba(21,101,192,.1);}
 .psbtn.psred{border-color:#C62828;background:rgba(183,28,28,.08);}
 .psbtn-n{font-size:10px;font-weight:500;font-family:'DM Sans',sans-serif;}
 .psbtn-s{font-size:7.5px;color:#3a5068;margin-top:1px;font-family:'DM Sans',sans-serif;}
 .ftype-row{display:flex;gap:6px;margin-bottom:9px;}
-.ftype-btn{flex:1;padding:9px 5px;border-radius:8px;border:1px solid rgba(33,150,243,.08);background:#090d1a;color:#3a5068;font-size:9px;font-weight:400;cursor:pointer;text-align:center;font-family:'DM Sans',sans-serif;}
+.ftype-btn{flex:1;padding:9px 5px;border-radius:8px;border:1px solid var(--brd);background:var(--inp);color:#3a5068;font-size:9px;font-weight:400;cursor:pointer;text-align:center;font-family:'DM Sans',sans-serif;}
 .ftype-btn.ftd{border-color:#C62828;background:rgba(183,28,28,.1);color:#e8a0a0;}
 .ftype-btn.fti{border-color:rgba(255,214,0,.3);background:rgba(255,214,0,.05);color:#d4b84a;}
-.ftype-note{font-size:8px;color:#3a5068;margin-bottom:8px;padding:6px 8px;background:#090d1a;border-radius:6px;line-height:1.5;font-family:'DM Sans',sans-serif;}
+.ftype-note{font-size:8px;color:#3a5068;margin-bottom:8px;padding:6px 8px;background:var(--inp);border-radius:6px;line-height:1.5;font-family:'DM Sans',sans-serif;}
 .riv-row{display:flex;align-items:center;gap:7px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.02);}
 .riv-row:last-child{border-bottom:none;}
 .riv-num{font-family:'Bebas Neue',sans-serif;font-size:18px;font-weight:400;color:#e8a0a0;width:30px;text-align:center;flex-shrink:0;}
@@ -575,7 +575,7 @@ body{background:var(--bg);color:var(--txt);font-family:'DM Sans',sans-serif;min-
 .ev-ico{font-size:12px;width:15px;text-align:center;flex-shrink:0;}
 .ev-txt{font-size:9px;flex:1;color:#5a7a94;font-family:'DM Sans',sans-serif;}
 .ev-p{font-size:7px;color:#3a5068;flex-shrink:0;font-family:'DM Sans',sans-serif;}
-.lu-slot{background:#090d1a;border:1px solid rgba(33,150,243,.08);border-radius:7px;padding:7px;display:flex;align-items:center;gap:7px;margin-bottom:5px;}
+.lu-slot{background:var(--inp);border:1px solid var(--brd);border-radius:7px;padding:7px;display:flex;align-items:center;gap:7px;margin-bottom:5px;}
 .lu-idx{font-family:'Bebas Neue',sans-serif;font-size:15px;font-weight:400;color:#2196F3;width:17px;}
 .sum-score{display:flex;align-items:center;justify-content:center;gap:12px;margin:8px 0;}
 .sum-n{font-family:'Bebas Neue',sans-serif;font-size:60px;font-weight:400;line-height:1;letter-spacing:2px;}
@@ -635,7 +635,6 @@ function ConfirmDialog({ cfg, onClose }) {
 
 // ── Modal Resultado Rápido — igual que live match ────────────────────────────
 function QuickResultModal({ m, players, onClose, onSave }) {
-  const { useState } = React;
   const catPls = players.filter(p => p.cat === m.cat);
   const [sH, setSH] = useState("");
   const [sA, setSA] = useState("");
@@ -829,7 +828,6 @@ function QuickResultModal({ m, players, onClose, onSave }) {
 
 // ── Modal para agregar jugador en pleno partido ──────────────────────────────
 function AddPlayerModal({ match, rivals, myPlayers, curMin, onClose, onAddUs, onAddThem }) {
-  const { useState } = React;
   const [team,    setTeam]    = useState("us");
   const [nombre,  setNombre]  = useState("");
   const [num,     setNum]     = useState("");
@@ -895,7 +893,6 @@ function AddPlayerModal({ match, rivals, myPlayers, curMin, onClose, onAddUs, on
 
 // ── Componente tarjeta de partido del torneo rápido (necesita sus propios hooks) ──
 function TrPartidoCard({ p, canEdit, onSave }) {
-  const { useState } = React;
   const [editando,   setEditando]   = useState(false);
   const [sH,         setSH]         = useState(p.scoreH!==null?String(p.scoreH):"");
   const [sA,         setSA]         = useState(p.scoreA!==null?String(p.scoreA):"");
@@ -2218,7 +2215,7 @@ function LiveMatch({ match, myPlayers, sanctions, setSanctions, onClose, onSave,
                     </div>
                     <div style={{ display:"flex", gap:6, marginTop:8 }}>
                       <button className="btn btn-red" onClick={() => selR !== null && doGoalThem(selR)}>CONFIRMAR</button>
-                      <button className="btn" style={{ background:"#0c1220", border:"1px solid rgba(33,150,243,.15)", fontSize:11 }} onClick={() => doGoalThem(null)}>Sin asignar</button>
+                      <button className="btn" style={{ background:"var(--bg3)", border:"1px solid rgba(33,150,243,.15)", fontSize:11 }} onClick={() => doGoalThem(null)}>Sin asignar</button>
                     </div>
                   </>
                 ) : (
@@ -2254,7 +2251,7 @@ function LiveMatch({ match, myPlayers, sanctions, setSanctions, onClose, onSave,
                       CONFIRMAR AUTOGOL
                     </button>
                   )}
-                  <button className="btn" style={{ background:"#0c1220", border:"1px solid rgba(33,150,243,.15)", fontSize:11 }}
+                  <button className="btn" style={{ background:"var(--bg3)", border:"1px solid rgba(33,150,243,.15)", fontSize:11 }}
                     onClick={() => { setThem(s=>s+1); addLog("goal_them","Autogol RFC","🙈"); closeModal(); }}>
                     Sin asignar
                   </button>
@@ -2288,7 +2285,7 @@ function LiveMatch({ match, myPlayers, sanctions, setSanctions, onClose, onSave,
                       CONFIRMAR AUTOGOL
                     </button>
                   )}
-                  <button className="btn" style={{ background:"#0c1220", border:"1px solid rgba(33,150,243,.15)", fontSize:11 }}
+                  <button className="btn" style={{ background:"var(--bg3)", border:"1px solid rgba(33,150,243,.15)", fontSize:11 }}
                     onClick={() => { setUs(s=>s+1); addLog("goal_us","Autogol rival","🙈"); closeModal(); }}>
                     Sin asignar
                   </button>
@@ -2563,7 +2560,7 @@ function LiveMatch({ match, myPlayers, sanctions, setSanctions, onClose, onSave,
             <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:20, color:"#d4b84a", marginBottom:4 }}>
               EMPATE AL FINAL DEL TIEMPO REGLAMENTARIO
             </div>
-            <div style={{ fontSize:10, color:"#afc4d8", marginBottom:6 }}>
+            <div style={{ fontSize:10, color:"var(--txt)", marginBottom:6 }}>
               {match.home} {scoreUs} — {scoreThem} {match.away}
             </div>
             <div style={{ fontSize:9, color:"#4e6a88", marginBottom:16 }}>
@@ -2589,7 +2586,7 @@ function LiveMatch({ match, myPlayers, sanctions, setSanctions, onClose, onSave,
             <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:20, color:"#E53935", marginBottom:4 }}>
               EMPATE EN TIEMPO EXTRA
             </div>
-            <div style={{ fontSize:10, color:"#afc4d8", marginBottom:16 }}>
+            <div style={{ fontSize:10, color:"var(--txt)", marginBottom:16 }}>
               {match.home} {scoreUs} — {scoreThem} {match.away}
             </div>
             <button className="btn" style={{ width:"100%", marginBottom:8, background:"rgba(229,57,53,.15)", borderColor:"rgba(229,57,53,.4)", color:"#ef9a9a" }}
@@ -4139,8 +4136,8 @@ export default function App() {
                 <div style={{ fontSize:9, color:"#4e6a88", marginBottom:10 }}>
                   Envía el resumen a representantes y jugadores de {lm.cat}
                 </div>
-                <div style={{ background:"#06091a", borderRadius:8, padding:"10px", marginBottom:10,
-                  fontSize:9, whiteSpace:"pre-wrap", color:"#c0cfe0", border:"1px solid rgba(33,150,243,.1)" }}>
+                <div style={{ background:"var(--card)", borderRadius:8, padding:"10px", marginBottom:10,
+                  fontSize:9, whiteSpace:"pre-wrap", color:"var(--txt)", border:"1px solid rgba(33,150,243,.1)" }}>
                   {msg}
                 </div>
                 <div style={{ fontSize:8, color:"#3a5068", marginBottom:6 }}>
@@ -4173,7 +4170,7 @@ export default function App() {
   // ── LOGIN ──────────────────────────────────
   if (!dbReady) {
     return (
-      <div style={{ background:"#04060c", minHeight:"100vh", display:"flex", flexDirection:"column",
+      <div style={{ background:"var(--bg)", minHeight:"100vh", display:"flex", flexDirection:"column",
         alignItems:"center", justifyContent:"center", gap:16 }}>
         <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:42, letterSpacing:4 }}>
           <span style={{ color:"#2196F3" }}>RÓMULO</span> <span style={{ color:"#E53935" }}>F.C</span>
@@ -4476,7 +4473,7 @@ export default function App() {
                 <div className="sb"><div className="sn" style={{ color:"#2196F3" }}>{totalJ}</div><div className="sl">Jugadores</div></div>
                 <div className="sb"><div className="sn" style={{ color:"#d4b84a" }}>{CATS.length}</div><div className="sl">Categorías</div></div>
                 <div className="sb"><div className="sn" style={{ color:"#2196F3" }}>{totalP}</div><div className="sl">Próximos</div></div>
-                <div className="sb"><div className="sn" style={{ color:"#afc4d8" }}>{totalF}</div><div className="sl">Jugados</div></div>
+                <div className="sb"><div className="sn" style={{ color:"var(--txt)" }}>{totalF}</div><div className="sl">Jugados</div></div>
               </div>
               <div className="card">
                 <div className="ch"><span className="ct">Campeonatos Activos</span><span className="bg bg-y">{totalC}</span></div>
@@ -4711,7 +4708,7 @@ export default function App() {
                   return (
                   <div key={t.id} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"6px 0", borderBottom:"1px solid rgba(255,255,255,.02)" }}>
                     <div>
-                      <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:13, letterSpacing:.5, color:"#afc4d8" }}>{fechaT}</div>
+                      <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:13, letterSpacing:.5, color:"var(--txt)" }}>{fechaT}</div>
                       <div style={{ fontSize:8, color:"#4e6a88" }}>⏰ {t.hora} · 📍 {t.lugar}</div>
                       {t.tema && <div style={{ fontSize:7.5, color:"#4e6a88", marginTop:1 }}>📋 {t.tema}</div>}
                     </div>
@@ -5063,7 +5060,7 @@ export default function App() {
                 <div style={{ fontSize:8, color:"#3a5068", textTransform:"uppercase", letterSpacing:.5, marginBottom:5 }}>Próximos</div>
                 {proxT.map(t=>(
                   <div key={t.id} className="card" style={{ marginBottom:8, borderLeft:"3px solid rgba(33,150,243,.3)" }}>
-                    <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:15, letterSpacing:.5, color:"#afc4d8", marginBottom:4 }}>{FechaLeg(t.fecha)}</div>
+                    <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:15, letterSpacing:.5, color:"var(--txt)", marginBottom:4 }}>{FechaLeg(t.fecha)}</div>
                     <div style={{ display:"flex", gap:10, fontSize:9.5, color:"#7ab3e0" }}>
                       <span>⏰ {t.hora}</span><span>📍 {t.lugar}</span>
                     </div>
@@ -5102,7 +5099,7 @@ export default function App() {
               ))}
             </div>
             <div style={{ minHeight:260, maxHeight:"calc(100vh - 360px)", overflowY:"auto",
-              background:"#06091a", borderRadius:10, border:"1px solid rgba(33,150,243,.08)",
+              background:"var(--card)", borderRadius:10, border:"1px solid rgba(33,150,243,.08)",
               padding:"10px", marginBottom:10, display:"flex", flexDirection:"column", gap:8 }}>
               {filtMsgs.length === 0 && (
                 <div style={{ textAlign:"center", color:"#3a5068", fontSize:9, marginTop:40 }}>
@@ -5164,7 +5161,7 @@ export default function App() {
             <div className="sr4">
               <div className="sb"><div className="sn" style={{ color:"#2196F3" }}>{totalJ}</div><div className="sl">Jugadores</div></div>
               <div className="sb"><div className="sn" style={{ color:"#d4b84a" }}>{CATS.length}</div><div className="sl">Categorías</div></div>
-              <div className="sb"><div className="sn" style={{ color:"#afc4d8" }}>{totalF}</div><div className="sl">Jugados</div></div>
+              <div className="sb"><div className="sn" style={{ color:"var(--txt)" }}>{totalF}</div><div className="sl">Jugados</div></div>
               <div className="sb"><div className="sn" style={{ color:"#2196F3" }}>{totalP}</div><div className="sl">Próximos</div></div>
             </div>
             {/* Botón comparativa */}
@@ -5259,7 +5256,7 @@ export default function App() {
             const uid = myUID();
             return (
               <div style={{ position:"absolute", top:64, right:8, width:"calc(100% - 16px)",
-                maxWidth:360, background:"#06091a", border:"1px solid rgba(33,150,243,.2)",
+                maxWidth:360, background:"var(--card)", border:"1px solid rgba(33,150,243,.2)",
                 borderRadius:12, zIndex:900, boxShadow:"0 8px 32px rgba(0,0,0,.5)",
                 maxHeight:"70vh", display:"flex", flexDirection:"column" }}>
                 {/* Header */}
@@ -5418,7 +5415,7 @@ export default function App() {
               display:"flex", alignItems:"center", gap:10 }}>
               <span style={{ fontSize:20 }}>🔔</span>
               <div style={{ flex:1 }}>
-                <div style={{ fontSize:10, fontWeight:600, color:"#afc4d8" }}>Activar notificaciones</div>
+                <div style={{ fontSize:10, fontWeight:600, color:"var(--txt)" }}>Activar notificaciones</div>
                 <div style={{ fontSize:8, color:"#4e6a88", marginTop:1 }}>Recibe alertas de partidos, pagos y avisos del club</div>
               </div>
               <button className="btn-sm" style={{ background:"#1565C0", color:"#fff", flexShrink:0 }}
@@ -5898,7 +5895,7 @@ export default function App() {
                     <div style={{ display:"flex", flexDirection:"column", gap:2, width:"100%" }}>
                       {evs.slice(0,3).map((e,ei)=>(
                         <div key={ei} style={{ borderRadius:3, padding:"1px 3px", background:e.color+"22",
-                          borderLeft:`2px solid ${e.color}`, fontSize:6.5, color:"#c0cfe0", lineHeight:1.3,
+                          borderLeft:`2px solid ${e.color}`, fontSize:6.5, color:"var(--txt)", lineHeight:1.3,
                           overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
                           {e.icon} {e.label}
                         </div>
@@ -6249,7 +6246,7 @@ export default function App() {
                         .slice(0,5);
                       if (pMatches.length===0) return null;
                       return (
-                        <div style={{ marginTop:8, background:"#06091a", borderRadius:8, padding:"7px 9px",
+                        <div style={{ marginTop:8, background:"var(--card)", borderRadius:8, padding:"7px 9px",
                           border:"1px solid rgba(33,150,243,.07)" }}>
                           <div style={{ fontSize:8, color:"#3a5068", textTransform:"uppercase", letterSpacing:.5, marginBottom:5 }}>
                             ⚽ Últimos 5 partidos
@@ -6446,7 +6443,7 @@ export default function App() {
                   <div style={{ marginBottom:8 }}>
                     {(np.lesiones||[]).map((l,i) => (
                       <div key={i} style={{ display:"flex", justifyContent:"space-between", alignItems:"center",
-                        padding:"5px 8px", background:"#090d1a", borderRadius:7, marginBottom:4,
+                        padding:"5px 8px", background:"var(--inp)", borderRadius:7, marginBottom:4,
                         border:"1px solid rgba(229,57,53,.1)" }}>
                         <div>
                           <div style={{ fontSize:10, color:"#e8a0a0" }}>🩹 {l.tipo}</div>
@@ -6459,7 +6456,7 @@ export default function App() {
                     ))}
                   </div>
                 )}
-                <div style={{ background:"#090d1a", border:"1px solid rgba(33,150,243,.08)", borderRadius:8, padding:"9px", marginBottom:8 }}>
+                <div style={{ background:"var(--inp)", border:"1px solid rgba(33,150,243,.08)", borderRadius:8, padding:"9px", marginBottom:8 }}>
                   <div style={{ fontSize:8, color:"#7ab3e0", fontWeight:600, marginBottom:6 }}>➕ Registrar lesión</div>
                   <div className="inp-2">
                     <div className="inp-wrap">
@@ -6509,7 +6506,7 @@ export default function App() {
                 <div style={{ background:"rgba(212,184,74,.06)", border:"1px solid rgba(212,184,74,.2)", borderRadius:9, padding:"10px", marginBottom:10 }}>
                   <div style={{ fontSize:9, color:"#d4b84a", fontWeight:600, marginBottom:4 }}>📄 Paso 1 — Descarga la plantilla</div>
                   <div style={{ fontSize:8, color:"#4e6a88", lineHeight:1.6, marginBottom:8 }}>
-                    Descarga el archivo de ejemplo, llénalo con los datos de tus jugadores y luego impórtalo. <strong style={{ color:"#afc4d8" }}>No cambies los nombres de las columnas.</strong>
+                    Descarga el archivo de ejemplo, llénalo con los datos de tus jugadores y luego impórtalo. <strong style={{ color:"var(--txt)" }}>No cambies los nombres de las columnas.</strong>
                   </div>
                   <button className="btn-sm" style={{ width:"100%", padding:9, fontSize:10, color:"#d4b84a", borderColor:"rgba(212,184,74,.3)", background:"rgba(212,184,74,.08)" }}
                     onClick={() => {
@@ -6532,13 +6529,13 @@ export default function App() {
                 </div>
 
                 {/* ── Columnas requeridas ── */}
-                <div style={{ fontSize:8, color:"#4e6a88", lineHeight:1.7, marginBottom:10, padding:"8px", background:"#090d1a", borderRadius:7 }}>
+                <div style={{ fontSize:8, color:"#4e6a88", lineHeight:1.7, marginBottom:10, padding:"8px", background:"var(--inp)", borderRadius:7 }}>
                   <div style={{ color:"#7ab3e0", fontWeight:600, marginBottom:4 }}>📋 Paso 2 — Llena el archivo</div>
                   <div style={{ fontFamily:"monospace", fontSize:7.5, color:"#5a7a94" }}>
-                    • <strong style={{ color:"#afc4d8" }}>nombre, apellido, cedula</strong> — obligatorios<br/>
-                    • <strong style={{ color:"#afc4d8" }}>fechaNacimiento</strong> — formato AAAA-MM-DD<br/>
-                    • <strong style={{ color:"#afc4d8" }}>categoria</strong> — Sub-11, Sub-13, Sub-15, Sub-17, Sub-19<br/>
-                    • <strong style={{ color:"#afc4d8" }}>tel, num, rep*, notas</strong> — opcionales
+                    • <strong style={{ color:"var(--txt)" }}>nombre, apellido, cedula</strong> — obligatorios<br/>
+                    • <strong style={{ color:"var(--txt)" }}>fechaNacimiento</strong> — formato AAAA-MM-DD<br/>
+                    • <strong style={{ color:"var(--txt)" }}>categoria</strong> — Sub-11, Sub-13, Sub-15, Sub-17, Sub-19<br/>
+                    • <strong style={{ color:"var(--txt)" }}>tel, num, rep*, notas</strong> — opcionales
                   </div>
                 </div>
 
@@ -7004,7 +7001,7 @@ export default function App() {
               <div className="card" style={{ marginBottom:8 }}>
                 <div className="ch"><span className="ct">Pagos de Arbitraje</span></div>
                 <p style={{ fontSize:8.5, color:"#4e6a88", lineHeight:1.6, marginBottom:6 }}>
-                  Los pagos se registran automáticamente desde el módulo <strong style={{ color:"#afc4d8" }}>En Vivo</strong> al finalizar cada partido.
+                  Los pagos se registran automáticamente desde el módulo <strong style={{ color:"var(--txt)" }}>En Vivo</strong> al finalizar cada partido.
                 </p>
                 <div style={{ display:"flex", alignItems:"center", gap:6, background:"rgba(33,150,243,.04)", borderRadius:7, padding:"7px 9px" }}>
                   <span style={{ fontSize:14 }}>🏁</span>
@@ -7073,7 +7070,7 @@ export default function App() {
                     {["Todas",...CATS].map(c => <option key={c}>{c}</option>)}
                   </select>
                 </div>
-                <div style={{ background:"#0c1220", borderRadius:8, padding:"8px 10px", fontSize:9, color:"#8fa8c8", lineHeight:1.6, maxHeight:180, overflowY:"auto", marginBottom:10, whiteSpace:"pre-wrap" }}>
+                <div style={{ background:"var(--bg3)", borderRadius:8, padding:"8px 10px", fontSize:9, color:"#8fa8c8", lineHeight:1.6, maxHeight:180, overflowY:"auto", marginBottom:10, whiteSpace:"pre-wrap" }}>
                   {buildListMsg()}
                 </div>
                 <div style={{ display:"flex", gap:6 }}>
@@ -7142,7 +7139,7 @@ export default function App() {
                           <div key={mi} style={{ borderRadius:3, padding:"1px 3px", width:"90%",
                             background: m.status==="finalizado"?"rgba(21,101,192,.2)":"rgba(33,150,243,.12)",
                             borderLeft:`2px solid ${m.status==="finalizado"?"#1565C0":"#2196F3"}`,
-                            fontSize:6.5, color:"#c0cfe0", lineHeight:1.3,
+                            fontSize:6.5, color:"var(--txt)", lineHeight:1.3,
                             overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
                             ⚽ {m.away}
                           </div>
@@ -7366,7 +7363,7 @@ export default function App() {
                       </div>
                     )}
                     {t.resultado && (
-                      <div style={{ marginTop:6, fontSize:9, color:"#c0cfe0", background:"rgba(21,101,192,.07)",
+                      <div style={{ marginTop:6, fontSize:9, color:"var(--txt)", background:"rgba(21,101,192,.07)",
                         borderRadius:6, padding:"5px 8px" }}>
                         🏆 {t.resultado}
                       </div>
@@ -7607,7 +7604,7 @@ export default function App() {
 
           {/* Mensajes */}
           <div style={{ minHeight:300, maxHeight:"calc(100vh - 340px)", overflowY:"auto",
-            background:"#06091a", borderRadius:10, border:"1px solid rgba(33,150,243,.08)",
+            background:"var(--card)", borderRadius:10, border:"1px solid rgba(33,150,243,.08)",
             padding:"10px", marginBottom:10, display:"flex", flexDirection:"column", gap:8 }}>
             {filtMsgs.length === 0 && (
               <div style={{ textAlign:"center", color:"#3a5068", fontSize:9, marginTop:40 }}>
@@ -8100,7 +8097,7 @@ export default function App() {
                           <div key={ti} style={{ borderRadius:3, padding:"1px 3px", width:"90%",
                             background:"rgba(21,101,192,.15)",
                             borderLeft:"2px solid #1976D2",
-                            fontSize:6.5, color:"#c0cfe0", lineHeight:1.3,
+                            fontSize:6.5, color:"var(--txt)", lineHeight:1.3,
                             overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
                             🏃 {t.tema||t.hora}
                           </div>
@@ -8718,7 +8715,7 @@ export default function App() {
 
                         {/* Formulario agregar/editar equipo */}
                         {can("pagos") && (
-                          <div style={{ background:"#090d1a", borderRadius:9, padding:"10px", border:"1px solid rgba(33,150,243,.08)", marginBottom:9 }}>
+                          <div style={{ background:"var(--inp)", borderRadius:9, padding:"10px", border:"1px solid rgba(33,150,243,.08)", marginBottom:9 }}>
                             <div style={{ fontSize:9, color:"#7ab3e0", fontWeight:600, marginBottom:7, textTransform:"uppercase", letterSpacing:.3 }}>
                               {isEditingThis ? "✏️ Editar equipo" : "+ Agregar equipo"}
                             </div>
@@ -8808,7 +8805,7 @@ export default function App() {
                           return (
                             <div style={{ display:"flex", flexDirection:"column", gap:8, marginBottom:10 }}>
                               {llavesRonda.map((ll, idx) => (
-                                <div key={ll.id} style={{ background:"#090d1a", borderRadius:9, padding:"10px", border:"1px solid rgba(33,150,243,.1)" }}>
+                                <div key={ll.id} style={{ background:"var(--inp)", borderRadius:9, padding:"10px", border:"1px solid rgba(33,150,243,.1)" }}>
                                   <div style={{ fontSize:8, color:"#4e6a88", marginBottom:6, textTransform:"uppercase", letterSpacing:.5 }}>
                                     Llave {idx+1} · {rondaVista}
                                     {ll.ganador && <span style={{ color:"#d4b84a", marginLeft:6 }}>🏆 {ll.ganador}</span>}
@@ -8823,7 +8820,7 @@ export default function App() {
                                           {equipos.map(eq => <option key={eq} value={eq}>{eq}</option>)}
                                         </select>
                                       ) : (
-                                        <div style={{ fontSize:11, color:"#afc4d8", fontWeight:600, padding:"6px 0" }}>{ll.local || "Por definir"}</div>
+                                        <div style={{ fontSize:11, color:"var(--txt)", fontWeight:600, padding:"6px 0" }}>{ll.local || "Por definir"}</div>
                                       )}
                                     </div>
 
@@ -8855,7 +8852,7 @@ export default function App() {
                                           {equipos.map(eq => <option key={eq} value={eq}>{eq}</option>)}
                                         </select>
                                       ) : (
-                                        <div style={{ fontSize:11, color:"#afc4d8", fontWeight:600, padding:"6px 0", textAlign:"right" }}>{ll.visitante || "Por definir"}</div>
+                                        <div style={{ fontSize:11, color:"var(--txt)", fontWeight:600, padding:"6px 0", textAlign:"right" }}>{ll.visitante || "Por definir"}</div>
                                       )}
                                     </div>
                                   </div>
@@ -9267,7 +9264,7 @@ export default function App() {
           <div className="card card-r">
             <div className="ch"><span className="ct">Sesión Activa</span></div>
             <p style={{ fontSize:9, color:"#4e6a88", marginBottom:10, lineHeight:1.5 }}>
-              Conectado como <strong style={{ color:"#afc4d8" }}>{user.name}</strong> · {user.role}
+              Conectado como <strong style={{ color:"var(--txt)" }}>{user.name}</strong> · {user.role}
             </p>
             <button className="btn btn-red" onClick={logout}>🚪 CERRAR SESIÓN</button>
           </div>
@@ -9711,7 +9708,7 @@ export default function App() {
         const fields = [
           { key:"goles",       label:"⚽ Goles",            color:"#2196F3" },
           { key:"asistencias", label:"🎯 Asistencias",       color:"#7ab3e0" },
-          { key:"partidos",    label:"🏟️ Partidos jugados",  color:"#afc4d8" },
+          { key:"partidos",    label:"🏟️ Partidos jugados",  color:"var(--txt)" },
           { key:"mvps",        label:"🏅 MVPs ganados",      color:"#d4b84a" },
           { key:"yellows",     label:"🟨 Tarjetas amarillas",color:"#d4b84a" },
           { key:"reds",        label:"🟥 Tarjetas rojas",    color:"#E53935" },
@@ -9724,7 +9721,7 @@ export default function App() {
                 <span className="mx" onClick={()=>setStatsEditModal(null)}>✕</span>
               </div>
               <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:12,
-                background:"#06091a", borderRadius:8, padding:"8px 10px" }}>
+                background:"var(--card)", borderRadius:8, padding:"8px 10px" }}>
                 <Avatar p={p} size={32}/>
                 <div>
                   <div style={{ fontSize:11, fontWeight:600 }}>{p.nombre} {p.apellido}</div>
@@ -10239,7 +10236,7 @@ export default function App() {
 
               {/* Estado de votación */}
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center",
-                background:"#090d1a", borderRadius:8, padding:"8px 10px", marginBottom:10 }}>
+                background:"var(--inp)", borderRadius:8, padding:"8px 10px", marginBottom:10 }}>
                 <div style={{ fontSize:9 }}>
                   Votos emitidos: <strong style={{ color:"#7ab3e0" }}>{votosEmit}</strong> / {totalCoaches}
                 </div>
@@ -10523,7 +10520,7 @@ export default function App() {
               </div>
 
               {/* Datos del jugador */}
-              <div style={{ display:"flex", alignItems:"center", gap:9, background:"#090d1a",
+              <div style={{ display:"flex", alignItems:"center", gap:9, background:"var(--inp)",
                 borderRadius:8, padding:"8px 10px", marginBottom:12 }}>
                 <Avatar p={p} size={32} />
                 <div>
@@ -10540,7 +10537,7 @@ export default function App() {
                 </div>
                 <div style={{ flex:1, background:"rgba(21,101,192,.08)", borderRadius:7, padding:"7px 10px", textAlign:"center" }}>
                   <div style={{ fontSize:8, color:"#4e6a88" }}>Registrado por</div>
-                  <div style={{ fontSize:9, fontWeight:600, color:"#afc4d8", marginTop:3 }}>{user?.name}</div>
+                  <div style={{ fontSize:9, fontWeight:600, color:"var(--txt)", marginTop:3 }}>{user?.name}</div>
                 </div>
               </div>
 
@@ -10672,7 +10669,7 @@ export default function App() {
             <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:16, color:"#ef9a9a", marginBottom:4 }}>
               Eliminar Partido
             </div>
-            <div style={{ fontSize:10, color:"#afc4d8", marginBottom:4 }}>
+            <div style={{ fontSize:10, color:"var(--txt)", marginBottom:4 }}>
               {confirmDelM.home} vs {confirmDelM.away}
             </div>
             <div style={{ fontSize:9, color:"#4e6a88", marginBottom:14 }}>
@@ -10709,7 +10706,7 @@ export default function App() {
             <div style={{ fontSize:11, color:"#4e6a88", marginBottom:14 }}>
               {newPlayerWA.nombre} {newPlayerWA.apellido}
             </div>
-            <div style={{ fontSize:10, color:"#afc4d8", marginBottom:10 }}>
+            <div style={{ fontSize:10, color:"var(--txt)", marginBottom:10 }}>
               Envía el enlace de la app por WhatsApp:
             </div>
 
