@@ -306,7 +306,7 @@ import { initializeApp } from "firebase/app";
 import {
   getFirestore, collection, doc,
   onSnapshot, setDoc, updateDoc, deleteDoc, getDoc,
-  enableIndexedDbPersistence, query, orderBy, limit
+  enableIndexedDbPersistence
 } from "firebase/firestore";
 import { getMessaging, getToken, onMessage } from "firebase/messaging";
 
@@ -2883,25 +2883,14 @@ export default function App() {
 
     // Asistencia
     unsubs.push(onSnapshot(collection(db, "att"), snap => {
-      // Solo actualizar los docs que cambiaron (no recrear todo el objeto)
-      setAtt(prev => {
-        const next = { ...prev };
-        snap.docChanges().forEach(change => {
-          if (change.type === "removed") delete next[change.doc.id];
-          else next[change.doc.id] = change.doc.data();
-        });
-        // Primera carga: usar docs completos
-        if (snap.docChanges().length === snap.docs.length) {
-          snap.docs.forEach(d => { next[d.id] = d.data(); });
-        }
-        return next;
-      });
+      const data = {};
+      snap.docs.forEach(d => { data[d.id] = d.data(); });
+      setAtt(data);
     }));
 
     // Notificaciones
-    const notifsQ = query(collection(db, "notifs"), orderBy("ts", "desc"), limit(50));
-    unsubs.push(onSnapshot(notifsQ, snap => {
-      setNotifs(snap.docs.map(d => ({ ...d.data(), id: d.id })));
+    unsubs.push(onSnapshot(collection(db, "notifs"), snap => {
+      setNotifs(snap.docs.map(d=>({...d.data(),id:d.id})).sort((a,b)=>(b.ts||"").localeCompare(a.ts||"")).slice(0,50));
     }));
 
     // Coaches — solo lee de Firebase, nunca sobreescribe
@@ -2926,9 +2915,10 @@ export default function App() {
     unsubs.push(onSnapshot(collection(db, "champs"), snap => {
       setChamps(snap.docs.map(d => ({ ...d.data(), id: d.id })));
     }));
-    const chatQ = query(collection(db, "chat"), orderBy("ts","asc"), limit(150));
-    unsubs.push(onSnapshot(chatQ, snap => {
-      setChatMsgs(snap.docs.map(d => ({ ...d.data(), id: d.id })));
+    unsubs.push(onSnapshot(collection(db, "chat"), snap => {
+      const msgs = snap.docs.map(d=>({...d.data(),id:d.id}));
+      msgs.sort((a,b)=>(a.ts||"").localeCompare(b.ts||""));
+      setChatMsgs(msgs.slice(-150));
     }));
     unsubs.push(onSnapshot(collection(db, "att_matches"), snap => {
       setAttMatches(snap.docs.map(d => ({ ...d.data(), id: d.id })));
