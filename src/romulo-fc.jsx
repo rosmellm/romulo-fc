@@ -604,7 +604,7 @@ function FoulDots({ count, max }) {
   );
 }
 
-const ConfirmDialog=React.memo(function ConfirmDialog({ cfg, onClose })) {
+const ConfirmDialog=React.memo(function ConfirmDialog({ cfg, onClose }) {
   if (!cfg) return null;
   return (
     <div className="aov">
@@ -627,10 +627,10 @@ const ConfirmDialog=React.memo(function ConfirmDialog({ cfg, onClose })) {
       </div>
     </div>
   );
-}
+});
 
 // ── Modal Resultado Rápido — igual que live match ────────────────────────────
-const QuickResultModal = React.memo(function QuickResultModal({ m, players, onClose, onSave })) {
+const QuickResultModal = React.memo(function QuickResultModal({ m, players, onClose, onSave }) {
   const { useState } = React;
   const catPls = players.filter(p => p.cat === m.cat);
   const [sH, setSH] = useState("");
@@ -890,7 +890,7 @@ function AddPlayerModal({ match, rivals, myPlayers, curMin, onClose, onAddUs, on
 }
 
 // ── Componente tarjeta de partido del torneo rápido (necesita sus propios hooks) ──
-const TrPartidoCard = React.memo(function TrPartidoCard({ p, canEdit, onSave }) {
+function TrPartidoCard({ p, canEdit, onSave }) {
   const { useState } = React;
   const [editando,   setEditando]   = useState(false);
   const [sH,         setSH]         = useState(p.scoreH!==null?String(p.scoreH):"");
@@ -978,7 +978,7 @@ const TrPartidoCard = React.memo(function TrPartidoCard({ p, canEdit, onSave }) 
   );
 }
 
-const MatchCard = React.memo(function MatchCard({ m, champs })) {
+function MatchCard({ m, champs }) {
   const champ = champs && m.champId ? champs.find(c => c.id === m.champId) : null;
   return (
     <div className="mc">
