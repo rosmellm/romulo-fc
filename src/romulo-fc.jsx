@@ -3262,7 +3262,7 @@ export default function App() {
   const [statsEditModal, setStatsEditModal] = useState(null); // jugador a editar stats
   const [statsEdit, setStatsEdit] = useState({ goles:0, asistencias:0, partidos:0, mvps:0, yellows:0, reds:0 });
   const [historialModal, setHistorialModal] = useState(false);
-  const [verTodosPartidos, setVerTodosPartidos] = useState(false); // ver partidos de semanas pasadas
+  const [semanaOffset, setSemanaOffset] = useState(0); // 0=esta semana, -1=anterior, +1=próxima
   const [trNombre,     setTrNombre]     = useState("");
   const [trFecha,      setTrFecha]      = useState("");
   const [trCat,        setTrCat]        = useState("Sub-15");
@@ -3308,68 +3308,55 @@ export default function App() {
 
 
 
-  const filtM = (() => {
-    // Inicio de la semana actual (lunes a las 00:00)
-    const hoy    = new Date();
-    const diaSem = hoy.getDay() === 0 ? 6 : hoy.getDay() - 1; // 0=lun..6=dom
-    const lunesActual = new Date(hoy);
-    lunesActual.setHours(0,0,0,0);
-    lunesActual.setDate(hoy.getDate() - diaSem);
-
-    function parseMatchDate(dateStr) {
-      if (!dateStr) return null;
-      // Formato ISO "2026-03-21"
-      if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr.trim())) {
-        const [y,mo,d] = dateStr.trim().split("-").map(Number);
-        return new Date(y, mo-1, d);
-      }
-      // Formato "21 Mar 2026" o "21 Mar"
-      const MESES = {Ene:0,Feb:1,Mar:2,Abr:3,May:4,Jun:5,Jul:6,Ago:7,Sep:8,Oct:9,Nov:10,Dic:11};
-      const parts = dateStr.trim().split(/\s+/);
-      if (parts.length >= 2) {
-        const dd = parseInt(parts[0]);
-        const mm = MESES[parts[1]];
-        const yy = parts[2] ? parseInt(parts[2]) : new Date().getFullYear();
-        if (!isNaN(dd) && mm !== undefined) return new Date(yy, mm, dd);
-      }
-      return null;
+  // ── Helper para parsear fechas de partidos ──
+  function parseMatchDate(dateStr) {
+    if (!dateStr) return null;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr.trim())) {
+      const [y,mo,d] = dateStr.trim().split("-").map(Number);
+      return new Date(y, mo-1, d);
     }
+    const MESES = {Ene:0,Feb:1,Mar:2,Abr:3,May:4,Jun:5,Jul:6,Ago:7,Sep:8,Oct:9,Nov:10,Dic:11};
+    const parts = dateStr.trim().split(/\s+/);
+    if (parts.length >= 2) {
+      const dd = parseInt(parts[0]);
+      const mm = MESES[parts[1]];
+      const yy = parts[2] ? parseInt(parts[2]) : new Date().getFullYear();
+      if (!isNaN(dd) && mm !== undefined) return new Date(yy, mm, dd);
+    }
+    return null;
+  }
 
-    // Fin de la semana actual (domingo a las 23:59)
-    const domingoActual = new Date(lunesActual);
-    domingoActual.setDate(lunesActual.getDate() + 6);
-    domingoActual.setHours(23,59,59,999);
+  const filtM = (() => {
+    // Calcular lunes y domingo de la semana seleccionada
+    const hoy    = new Date();
+    const diaSem = hoy.getDay() === 0 ? 6 : hoy.getDay() - 1;
+    const lunesBase = new Date(hoy);
+    lunesBase.setHours(0,0,0,0);
+    lunesBase.setDate(hoy.getDate() - diaSem);
+    // Aplicar offset de semanas
+    const lunesSel = new Date(lunesBase);
+    lunesSel.setDate(lunesBase.getDate() + semanaOffset * 7);
+    const domingoSel = new Date(lunesSel);
+    domingoSel.setDate(lunesSel.getDate() + 6);
+    domingoSel.setHours(23,59,59,999);
 
     function sortMatches(list) {
       return list.sort((a, b) => {
         if (a.status === "en vivo" && b.status !== "en vivo") return -1;
         if (b.status === "en vivo" && a.status !== "en vivo") return  1;
-        const order = { "próximo":0, "en vivo":0, "finalizado":1 };
-        const oa = order[a.status] ?? 0, ob = order[b.status] ?? 0;
-        if (oa !== ob) return oa - ob;
         const da = parseMatchDate(a.date), db_ = parseMatchDate(b.date);
         if (!da || !db_) return 0;
-        return a.status === "finalizado" ? db_ - da : da - db_;
+        return da - db_;
       });
     }
-
-    // Hace 7 días — para incluir partidos recientes aunque haya cambiado de semana
-    const hace7 = new Date(hoy);
-    hace7.setDate(hoy.getDate() - 7);
-    hace7.setHours(0,0,0,0);
 
     const base = matches.filter(m => {
       const catOk = !user || user.cat === "Todas" || m.cat === user.cat;
       const filt  = catF === "Todas" || m.cat === catF;
       if (!catOk || !filt) return false;
       const fd = parseMatchDate(m.date);
-      if (!fd) return true;
-      if (m.status === "finalizado") {
-        // Finalizados: mostrar si son de los últimos 7 días
-        return fd >= hace7;
-      }
-      // Próximos/en vivo: mostrar si caen esta semana o después
-      return fd >= lunesActual;
+      if (!fd) return semanaOffset === 0; // sin fecha solo en semana actual
+      return fd >= lunesSel && fd <= domingoSel;
     });
 
     return sortMatches(base);
@@ -7515,7 +7502,35 @@ export default function App() {
               </button>
             </div>
           )}
-          {/* Lista de partidos de esta semana */}
+          {/* Navegador de semanas */}
+          {(() => {
+            const hoy    = new Date();
+            const diaSem = hoy.getDay()===0?6:hoy.getDay()-1;
+            const lunesBase = new Date(hoy);
+            lunesBase.setHours(0,0,0,0);
+            lunesBase.setDate(hoy.getDate()-diaSem);
+            const lunesSel = new Date(lunesBase);
+            lunesSel.setDate(lunesBase.getDate() + semanaOffset*7);
+            const domingoSel = new Date(lunesSel);
+            domingoSel.setDate(lunesSel.getDate()+6);
+            const fmtD = d => d.toLocaleDateString("es",{day:"numeric",month:"short"});
+            const esEstaS = semanaOffset === 0;
+            return (
+              <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:10 }}>
+                <button className="btn-sm" style={{ padding:"6px 12px", fontSize:14 }}
+                  onClick={()=>setSemanaOffset(o=>o-1)}>‹</button>
+                <div style={{ flex:1, textAlign:"center", fontSize:9, color: esEstaS?"#7ab3e0":"var(--txt3)",
+                  fontWeight: esEstaS?600:400 }}>
+                  {esEstaS ? "📅 Esta semana" : fmtD(lunesSel)+" – "+fmtD(domingoSel)}
+                </div>
+                <button className="btn-sm" style={{ padding:"6px 12px", fontSize:14,
+                  opacity: semanaOffset >= 0 ? .4 : 1 }}
+                  onClick={()=>{ if(semanaOffset<0) setSemanaOffset(o=>o+1); }}>›</button>
+              </div>
+            );
+          })()}
+
+          {/* Lista de partidos */}
           {filtM.map(m => (
             <div key={m.id}>
               <div onClick={() => m.status==="finalizado" && setMatchDetail(md => md?.id===m.id ? null : m)}
@@ -7526,12 +7541,12 @@ export default function App() {
               {matchDetail?.id === m.id && m.status === "finalizado" && (() => {
                 const attM    = attMatches.find(a => String(a.matchId)===String(m.id));
                 const ps      = m.playerStats || {};
-                // Convocados: att_matches si existe → playerStats si existe → vacío
+                // Convocados: att_matches si existe → solo playerStats con stats reales → vacío
                 const convIds = attM?.convocados?.length > 0
                   ? attM.convocados.map(String)
-                  : Object.keys(ps).length > 0
-                    ? Object.keys(ps).map(String)
-                    : [];
+                  : Object.entries(ps)
+                      .filter(([,s]) => (s.goles||0)>0 || (s.asistencias||0)>0)
+                      .map(([id]) => String(id));
                 const convPls = convIds.map(id=>players.find(p=>String(p.id)===id)).filter(Boolean);
                 const mvpPl   = m.mvp?.playerId ? players.find(x=>String(x.id)===String(m.mvp.playerId)) : null;
                 // Stats globales del partido
@@ -10613,12 +10628,12 @@ export default function App() {
         // Convocados del partido — de att_matches si existe, sino de playerStats, sino todos los de la cat
         const attM    = attMatches.find(a => a.matchId === mvpModal || String(a.matchId) === String(mvpModal));
         const psIds   = Object.keys(match.playerStats || {}).map(Number);
-        // Solo los que realmente jugaron — att_matches → playerStats → vacío
+        // Solo los que realmente jugaron — att_matches → playerStats con stats → vacío
         const convIds = attM?.convocados?.length > 0
           ? attM.convocados
-          : psIds.length > 0
-            ? psIds
-            : [];
+          : Object.entries(match.playerStats||{})
+              .filter(([,s]) => (s.goles||0)>0 || (s.asistencias||0)>0)
+              .map(([id]) => Number(id));
         const convPls = convIds.map(id => players.find(p => String(p.id)===String(id))).filter(Boolean);
 
         // Votos actuales
