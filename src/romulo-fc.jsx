@@ -686,20 +686,18 @@ function QuickResultModal({ m, players, onClose, onSave }) {
     const events = [];
     const playerStats = {};
 
-    // Todos los convocados suman +1 partido aunque no tengan stats
+    // Solo guardar en playerStats quienes tienen hazañas
+    // Los sin hazañas van SOLO en att_matches (convocadosIds) como fuente de verdad
     convocados.forEach(pl => {
       const stat = ps[pl.id] || {};
-      // Solo guardar en playerStats si tiene algo, pero el convocado siempre cuenta
       if (stat.goles||stat.asistencias||stat.amarilla||stat.roja) {
         playerStats[pl.id] = { goles:stat.goles||0, asistencias:stat.asistencias||0 };
         for (let i=0;i<(stat.goles||0);i++) events.push({type:"goal_us",txt:"Gol: "+pl.nombre+" "+pl.apellido,ico:"⚽"});
         for (let i=0;i<(stat.asistencias||0);i++) events.push({type:"assist",txt:"Asistencia: "+pl.nombre,ico:"🎯"});
         if (stat.amarilla) events.push({type:"y_us",txt:pl.nombre+" tarjeta amarilla",ico:"🟨"});
         if (stat.roja)     events.push({type:"r_us",txt:pl.nombre+" tarjeta roja",ico:"🟥"});
-      } else {
-        // Jugó pero sin hazañas — guardar solo para que aparezca como convocado
-        playerStats[pl.id] = { goles:0, asistencias:0 };
       }
+      // Sin hazañas: NO se agrega a playerStats — att_matches es la fuente de convocados
     });
     onSave(scoreH, scoreA, playerStats, events, convocados.map(p=>p.id));
   }
