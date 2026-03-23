@@ -3195,6 +3195,7 @@ export default function App() {
   const [galeriaModal, setGaleriaModal] = useState(null);
   const [galeriaClub, setGaleriaClub]   = useState([]); // fotos generales del club
   const [galeriaFile, setGaleriaFile]   = useState(null);
+  const [fotoSel,     setFotoSel]       = useState(null); // foto seleccionada en galería
   const [matchDetail,  setMatchDetail]  = useState(null); // partido para ver detalle
   const [editConvModal, setEditConvModal] = useState(null); // partido para editar convocados
   const [isDemo, setIsDemo] = useState(!!_savedSession?.isDemo); // { pid, nombre, session }
@@ -3999,9 +4000,20 @@ export default function App() {
   function saveMatch() {
     if (!nm.away || !nm.date || !nm.time || !nm.field) { setFormErr("Completa todos los campos"); return; }
     if (editMid) {
-      // Preservar campos existentes (status, scoreH, scoreA, mvp, events, playerStats)
       const existing = matches.find(m => String(m.id) === String(editMid)) || {};
-      safeSetDoc(doc(db, "matches", String(editMid)), { ...existing, ...nm, id: String(editMid) });
+      // Solo sobreescribir campos que tienen valor — home siempre de existing
+      const update = { ...existing,
+        away:    nm.away    || existing.away,
+        date:    nm.date    || existing.date,
+        time:    nm.time    || existing.time,
+        cat:     nm.cat     || existing.cat,
+        field:   nm.field   || existing.field,
+        champId: nm.champId !== undefined ? nm.champId : existing.champId,
+        fase:    nm.fase    || existing.fase,
+        home:    existing.home || "Rómulo FC",
+        id:      String(editMid),
+      };
+      safeSetDoc(doc(db, "matches", String(editMid)), update);
       addNotif("🔄 Partido reprogramado: " + nm.home + " vs " + nm.away + " · " + nm.date, "calendario", "cat:"+nm.cat, "partido");
       setEditMid(null);
     } else {
@@ -4617,7 +4629,7 @@ export default function App() {
     // Tabs según rol
     const SPEC_TABS = isVisitor
       ? [["inicio","🏠","Inicio"],["agenda","📆","Agenda"],["campeonatos","🏆","Tabla"],["calendario","📅","Partidos"],["stats","📊","Stats"]]
-      : [["inicio","🏠","Mi Perfil"],["pagos","💳","Pagos"],["agenda","📆","Agenda"],["campeonatos","🏆","Tabla"],["partidos","📅","Partidos"],["entrenos","🏃","Entrenos"],["torneos","🌍","Torneos"],["chat","💬","Chat"]];
+      : [["inicio","🏠","Mi Perfil"],["pagos","💳","Pagos"],["agenda","📆","Agenda"],["campeonatos","🏆","Tabla"],["partidos","📅","Partidos"],["entrenos","🏃","Entrenos"],["torneos","🌍","Torneos"],["galeria","📸","Galería"],["chat","💬","Chat"]];
 
     const roleBadge = isVisitor ? "VISITANTE" : role === "player" ? "JUGADOR" : "REP.";
 
@@ -5163,7 +5175,7 @@ export default function App() {
         function getEvSpec(date) {
           const evs=[]; const dd=date.getDate(),mm=date.getMonth(),yy=date.getFullYear();
           function sd(d){ return d&&d.getDate()===dd&&d.getMonth()===mm&&d.getFullYear()===yy; }
-          matches.forEach(m=>{ const d=parseEDate(m.date); if(sd(d)) evs.push({tipo:"partido",color:m.status==="finalizado"?"#1565C0":"#2196F3",icon:"⚽",label:m.home+" vs "+m.away,sub:m.status==="finalizado"?m.scoreH+"-"+m.scoreA:m.time}); });
+          matches.forEach(m=>{ const d=parseEDate(m.date); if(sd(d)) evs.push({tipo:"partido",color:m.status==="finalizado"?"#1565C0":"#2196F3",icon:"⚽",label:m.home+" vs "+m.away,sub:m.status==="finalizado"?m.scoreH+"-"+m.scoreA:m.time,match:m}); });
           trainings.forEach(t=>{ const d=parseEDate(t.date||t.fecha); if(sd(d)) evs.push({tipo:"entreno",color:"#1976D2",icon:"🏃",label:t.tema||"Entrenamiento",sub:(t.cat||"")+" "+(t.time||t.hora||"")}); });
           (clubConfig?.torneos||[]).forEach(t=>{ const d=parseEDate(t.fecha); if(sd(d)) evs.push({tipo:"torneo",color:"#d4b84a",icon:"🌍",label:t.nombre,sub:t.lugar||""}); });
           players.forEach(p=>{ if(!p.dob)return; const bd=new Date(p.dob); if(bd.getDate()===dd&&bd.getMonth()===mm) evs.push({tipo:"bday",color:"#E53935",icon:"🎂",label:p.nombre+" "+p.apellido,sub:"Cumple "+(yy-bd.getFullYear())+" años"}); });
@@ -5216,13 +5228,44 @@ export default function App() {
                     <span style={{ cursor:"pointer", color:"#7ab3e0" }} onClick={()=>setAgendaDia(null)}>✕</span></div>
                   {evs.length===0&&<div style={{ fontSize:9,color:"var(--txt4)",textAlign:"center",padding:12 }}>Sin actividades</div>}
                   {evs.map((e,i)=>(
-                    <div key={i} style={{ display:"flex",gap:8,padding:"6px 0",borderBottom:"1px solid rgba(255,255,255,.03)",alignItems:"center" }}>
-                      <div style={{ width:3,height:32,borderRadius:2,background:e.color,flexShrink:0 }}/>
-                      <div style={{ fontSize:14 }}>{e.icon}</div>
-                      <div style={{ flex:1 }}>
-                        <div style={{ fontSize:9.5,fontWeight:600 }}>{e.label}</div>
-                        <div style={{ fontSize:7.5,color:"var(--txt3)" }}>{e.sub}</div>
+                    <div key={i}>
+                      <div
+                        onClick={()=>e.tipo==="partido"&&e.match?.status==="finalizado"&&setMatchDetail(md=>md?.id===e.match.id?null:e.match)}
+                        style={{ display:"flex",gap:8,padding:"6px 0",
+                          borderBottom:"1px solid rgba(255,255,255,.03)",alignItems:"center",
+                          cursor:e.tipo==="partido"&&e.match?.status==="finalizado"?"pointer":"default" }}>
+                        <div style={{ width:3,height:32,borderRadius:2,background:e.color,flexShrink:0 }}/>
+                        <div style={{ fontSize:14 }}>{e.icon}</div>
+                        <div style={{ flex:1 }}>
+                          <div style={{ fontSize:9.5,fontWeight:600 }}>{e.label}</div>
+                          <div style={{ fontSize:7.5,color:"var(--txt3)" }}>{e.sub}</div>
+                        </div>
+                        {e.tipo==="partido"&&e.match?.status==="finalizado"&&(
+                          <span style={{ fontSize:8,color:"var(--txt4)" }}>
+                            {matchDetail?.id===e.match?.id?"▲":"▼"}
+                          </span>
+                        )}
                       </div>
+                      {/* Detalle expandido */}
+                      {e.tipo==="partido"&&e.match&&matchDetail?.id===e.match.id&&(() => {
+                        const m=e.match;
+                        const attM=attMatches.find(a=>String(a.matchId)===String(m.id));
+                        const ps=m.playerStats||{};
+                        const convIds=attM?.convocados?.length>0
+                          ?attM.convocados.map(String)
+                          :Object.entries(ps).filter(([,s])=>(s.goles||0)>0||(s.asistencias||0)>0).map(([id])=>String(id));
+                        const convPls=convIds.map(id=>players.find(p=>String(p.id)===id)).filter(Boolean);
+                        const goleadores=Object.entries(ps).filter(([,s])=>(s.goles||0)>0).map(([pid,s])=>{const pl=players.find(x=>String(x.id)===String(pid));return pl?{pl,goles:s.goles}:null;}).filter(Boolean);
+                        const mvpPl=m.mvp?.playerId?players.find(x=>String(x.id)===String(m.mvp.playerId)):null;
+                        return (
+                          <div style={{ background:"rgba(21,101,192,.04)",border:"1px solid rgba(33,150,243,.1)",
+                            borderRadius:8,padding:"8px 10px",marginBottom:4 }}>
+                            {(mvpPl||m.mvp?.nombre)&&<div style={{ fontSize:8.5,color:"#d4b84a",marginBottom:5 }}>🏅 MVP: {mvpPl?mvpPl.nombre+" "+mvpPl.apellido:(m.mvp?.nombre||"")+" "+(m.mvp?.apellido||"")}</div>}
+                            {goleadores.length>0&&<div style={{ fontSize:8.5,marginBottom:5 }}>⚽ {goleadores.map(g=>g.pl.nombre+(g.goles>1?" x"+g.goles:"")).join(", ")}</div>}
+                            {convPls.length>0&&<div style={{ fontSize:8,color:"var(--txt3)" }}>👥 {convPls.map(p=>p.nombre).join(", ")}</div>}
+                          </div>
+                        );
+                      })()}
                     </div>
                   ))}
                 </div>
@@ -5353,6 +5396,87 @@ export default function App() {
                 </>
               );
             })()}
+          </>
+        );
+      }
+
+      if (tab === "galeria") {
+        const fotosPartidos = matches.filter(m=>m.fotos?.length>0).flatMap(m=>
+          (m.fotos||[]).map(f=>({ src:f, caption:m.home+" vs "+m.away+" · "+m.date, cat:m.cat, id:m.id+"_"+m.fotos.indexOf(f) }))
+        );
+        const todasSpec = [...galeriaClub, ...fotosPartidos];
+        const filtSpec  = catF==="Todas" ? todasSpec : todasSpec.filter(f=>f.cat===catF);
+        const catsSpec  = ["Todas",...CATS,"Club"].filter(cat=>cat==="Todas"||todasSpec.some(f=>f.cat===cat));
+
+        function descargarFotoSpec(foto) {
+          const a=document.createElement("a");
+          a.href=foto.src;
+          a.download=(foto.caption||"foto_romulo_fc").replace(/[^a-zA-Z0-9]/g,"_")+".jpg";
+          document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        }
+
+        return (
+          <>
+            <div className="st">📸 Galería Rómulo FC</div>
+            {catsSpec.length > 2 && (
+              <div style={{ display:"flex", gap:5, overflowX:"auto", marginBottom:10,
+                paddingBottom:4, scrollbarWidth:"none" }}>
+                {catsSpec.map(cat=>(
+                  <button key={cat} className="btn-sm" style={{ flexShrink:0, fontSize:8,
+                    background:(catF||"Todas")===cat?"rgba(33,150,243,.2)":"rgba(255,255,255,.03)",
+                    color:(catF||"Todas")===cat?"#7ab3e0":"var(--txt3)",
+                    borderColor:(catF||"Todas")===cat?"rgba(33,150,243,.4)":"rgba(255,255,255,.05)" }}
+                    onClick={()=>setCatF(cat)}>{cat}</button>
+                ))}
+              </div>
+            )}
+            {filtSpec.length === 0 && (
+              <div className="card" style={{ textAlign:"center", padding:"30px 0" }}>
+                <div style={{ fontSize:32, marginBottom:8 }}>📷</div>
+                <div style={{ fontSize:9, color:"var(--txt3)" }}>Sin fotos disponibles aún</div>
+              </div>
+            )}
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6 }}>
+              {filtSpec.map((f,i)=>(
+                <div key={f.id||i} style={{ borderRadius:10, overflow:"hidden",
+                  position:"relative", border:"1px solid rgba(33,150,243,.1)", cursor:"pointer" }}
+                  onClick={()=>setFotoSel(f)}>
+                  <img src={f.src} alt={f.caption}
+                    style={{ width:"100%", aspectRatio:"1", objectFit:"cover", display:"block" }}/>
+                  <div style={{ position:"absolute", bottom:0, left:0, right:0,
+                    background:"linear-gradient(transparent,rgba(4,6,12,.85))",
+                    padding:"20px 6px 5px", fontSize:7.5, color:"rgba(255,255,255,.75)" }}>
+                    {f.caption}
+                  </div>
+                </div>
+              ))}
+            </div>
+            {/* Visor pantalla completa */}
+            {fotoSel && (
+              <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.92)",
+                zIndex:2000, display:"flex", flexDirection:"column",
+                alignItems:"center", justifyContent:"center" }}
+                onClick={()=>setFotoSel(null)}>
+                <div style={{ position:"absolute", top:16, right:16, display:"flex", gap:8 }}>
+                  <button onClick={e=>{e.stopPropagation();descargarFotoSpec(fotoSel);}}
+                    style={{ background:"rgba(33,150,243,.2)", border:"1px solid rgba(33,150,243,.4)",
+                      borderRadius:8, color:"#7ab3e0", fontSize:11, padding:"8px 14px", cursor:"pointer" }}>
+                    ⬇ Descargar HD
+                  </button>
+                  <button onClick={()=>setFotoSel(null)}
+                    style={{ background:"rgba(255,255,255,.08)", border:"none",
+                      borderRadius:8, color:"#fff", fontSize:18, padding:"6px 12px", cursor:"pointer" }}>
+                    ✕
+                  </button>
+                </div>
+                <img src={fotoSel.src} alt={fotoSel.caption}
+                  style={{ maxWidth:"95vw", maxHeight:"80vh", borderRadius:10, objectFit:"contain" }}
+                  onClick={e=>e.stopPropagation()}/>
+                <div style={{ marginTop:10, fontSize:9, color:"rgba(255,255,255,.6)", textAlign:"center", padding:"0 20px" }}>
+                  {fotoSel.caption}
+                </div>
+              </div>
+            )}
           </>
         );
       }
@@ -7895,92 +8019,141 @@ export default function App() {
     }
 
     if (tab === "galeria") {
-      // Recopilar todas las fotos de partidos
+      // Fotos de partidos
       const fotosPartidos = matches.filter(m=>m.fotos?.length>0).flatMap(m=>
-        (m.fotos||[]).map(f=>({ src:f, caption:m.home+" vs "+m.away+" · "+m.date, cat:m.cat }))
+        (m.fotos||[]).map(f=>({ src:f, caption:m.home+" vs "+m.away+" · "+m.date, cat:m.cat, id:m.id+"_"+m.fotos.indexOf(f) }))
       );
-      // Fotos generales del club (guardadas en config)
-      const todasFotos = [...fotosPartidos];
+      const todas = [...galeriaClub, ...fotosPartidos];
+      const filtradas = catF==="Todas" ? todas : todas.filter(f=>f.cat===catF);
 
+      // Subir fotos — solo admins/entrenadores
       function subirFotoClub() {
         const input = document.createElement("input");
-        input.type = "file"; input.accept = "image/*"; input.multiple = true;
-        input.onchange = async e => {
-          const files = Array.from(e.target.files);
-          for (const file of files) {
+        input.type="file"; input.accept="image/*"; input.multiple=true;
+        input.onchange = e => {
+          Array.from(e.target.files).forEach(file => {
             const reader = new FileReader();
             reader.onload = ev => {
-              setGaleriaClub(prev => [{
+              const nuevaFoto = {
                 src: ev.target.result,
                 caption: "Foto del club · " + new Date().toLocaleDateString("es"),
-                cat: "Club"
-              }, ...prev]);
+                cat: "Club",
+                id: "club_"+Date.now()+"_"+Math.random().toString(36).slice(2,6),
+                fileName: file.name,
+              };
+              setGaleriaClub(prev => [nuevaFoto, ...prev]);
+              // Guardar en Firebase config
+              const updFotos = [nuevaFoto, ...galeriaClub];
+              if (!isDemo) setDoc(doc(db,"config","galeria"), { fotos: updFotos });
             };
             reader.readAsDataURL(file);
-          }
+          });
         };
         input.click();
       }
 
-      const todas = [...galeriaClub, ...todasFotos];
+      // Descargar foto en HD
+      function descargarFoto(foto) {
+        const a = document.createElement("a");
+        a.href = foto.src;
+        a.download = (foto.caption||"foto_romulo_fc").replace(/[^a-zA-Z0-9]/g,"_")+".jpg";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      }
+
+      const cats = ["Todas",...CATS,"Club"].filter(cat => cat==="Todas" || todas.some(f=>f.cat===cat));
 
       return (
         <>
           <div className="st">📸 Galería Rómulo FC</div>
-          {can("config") && (
+
+          {/* Subir fotos — solo entrenadores/admin */}
+          {isAdmin && (
             <button className="btn" style={{ width:"100%", marginBottom:10 }}
               onClick={subirFotoClub}>
-              + Agregar Fotos
+              📷 Subir Fotos
             </button>
           )}
 
-          {todas.length === 0 && (
+          {/* Filtro categoría */}
+          {cats.length > 2 && (
+            <div style={{ display:"flex", gap:5, overflowX:"auto", marginBottom:10,
+              paddingBottom:4, scrollbarWidth:"none" }}>
+              {cats.map(cat => (
+                <button key={cat} className="btn-sm" style={{ flexShrink:0, fontSize:8,
+                  background: (catF||"Todas")===cat?"rgba(33,150,243,.2)":"rgba(255,255,255,.03)",
+                  color: (catF||"Todas")===cat?"#7ab3e0":"var(--txt3)",
+                  borderColor: (catF||"Todas")===cat?"rgba(33,150,243,.4)":"rgba(255,255,255,.05)" }}
+                  onClick={()=>setCatF(cat)}>
+                  {cat}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {filtradas.length === 0 && (
             <div className="card" style={{ textAlign:"center", padding:"30px 0" }}>
               <div style={{ fontSize:32, marginBottom:8 }}>📷</div>
               <div style={{ fontSize:9, color:"var(--txt3)" }}>
-                Sin fotos todavía. Las fotos de partidos aparecerán aquí automáticamente.
+                {isAdmin ? "Sin fotos. Sube la primera con el botón de arriba." : "Sin fotos disponibles aún."}
               </div>
             </div>
           )}
 
-          {/* Grid de fotos */}
-          {todas.length > 0 && (
-            <>
-              {/* Filtro por categoría */}
-              {["Todas",...CATS,"Club"].filter(cat =>
-                cat==="Todas" || todas.some(f=>f.cat===cat)
-              ).length > 2 && (
-                <div style={{ display:"flex", gap:5, overflowX:"auto", marginBottom:10,
-                  paddingBottom:4, scrollbarWidth:"none" }}>
-                  {["Todas",...CATS,"Club"].filter(cat =>
-                    cat==="Todas" || todas.some(f=>f.cat===cat)
-                  ).map(cat => (
-                    <button key={cat} className="btn-sm" style={{ flexShrink:0, fontSize:8,
-                      background: catF===cat||(!catF&&cat==="Todas")?"rgba(33,150,243,.2)":"rgba(255,255,255,.03)",
-                      color: catF===cat||(!catF&&cat==="Todas")?"#7ab3e0":"var(--txt3)",
-                      borderColor: catF===cat||(!catF&&cat==="Todas")?"rgba(33,150,243,.4)":"rgba(255,255,255,.05)" }}
-                      onClick={()=>setCatF(cat==="Todas"?"Todas":cat)}>
-                      {cat}
-                    </button>
-                  ))}
-                </div>
-              )}
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6 }}>
-                {todas.filter(f=>catF==="Todas"||f.cat===catF).map((f,i)=>(
-                  <div key={i} style={{ borderRadius:10, overflow:"hidden", position:"relative",
-                    border:"1px solid rgba(33,150,243,.1)" }}>
-                    <img src={f.src} alt={f.caption} style={{ width:"100%", aspectRatio:"1",
-                      objectFit:"cover", display:"block" }}/>
-                    <div style={{ position:"absolute", bottom:0, left:0, right:0,
-                      background:"linear-gradient(transparent,rgba(4,6,12,.8))",
-                      padding:"16px 6px 5px", fontSize:7.5, color:"rgba(255,255,255,.7)",
-                      lineHeight:1.3 }}>
-                      {f.caption}
-                    </div>
+          {/* Grid 2 columnas */}
+          {filtradas.length > 0 && (
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6 }}>
+              {filtradas.map((f,i) => (
+                <div key={f.id||i} style={{ borderRadius:10, overflow:"hidden",
+                  position:"relative", border:"1px solid rgba(33,150,243,.1)",
+                  cursor:"pointer" }}
+                  onClick={()=>setFotoSel(f)}>
+                  <img src={f.src} alt={f.caption}
+                    style={{ width:"100%", aspectRatio:"1", objectFit:"cover", display:"block" }}/>
+                  <div style={{ position:"absolute", bottom:0, left:0, right:0,
+                    background:"linear-gradient(transparent,rgba(4,6,12,.85))",
+                    padding:"20px 6px 5px", fontSize:7.5,
+                    color:"rgba(255,255,255,.75)", lineHeight:1.3 }}>
+                    {f.caption}
                   </div>
-                ))}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Visor de foto a pantalla completa con descarga */}
+          {fotoSel && (
+            <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.92)",
+              zIndex:2000, display:"flex", flexDirection:"column",
+              alignItems:"center", justifyContent:"center" }}
+              onClick={()=>setFotoSel(null)}>
+              <div style={{ position:"absolute", top:16, right:16, display:"flex", gap:8 }}>
+                {/* Descargar — disponible para todos */}
+                <button
+                  onClick={e=>{ e.stopPropagation(); descargarFoto(fotoSel); }}
+                  style={{ background:"rgba(33,150,243,.2)", border:"1px solid rgba(33,150,243,.4)",
+                    borderRadius:8, color:"#7ab3e0", fontSize:11, padding:"8px 14px",
+                    cursor:"pointer", fontWeight:600 }}>
+                  ⬇ Descargar HD
+                </button>
+                <button
+                  onClick={()=>setFotoSel(null)}
+                  style={{ background:"rgba(255,255,255,.08)", border:"none",
+                    borderRadius:8, color:"#fff", fontSize:18, padding:"6px 12px",
+                    cursor:"pointer" }}>
+                  ✕
+                </button>
               </div>
-            </>
+              <img src={fotoSel.src} alt={fotoSel.caption}
+                style={{ maxWidth:"95vw", maxHeight:"80vh", borderRadius:10,
+                  objectFit:"contain" }}
+                onClick={e=>e.stopPropagation()}/>
+              <div style={{ marginTop:10, fontSize:9, color:"rgba(255,255,255,.6)",
+                textAlign:"center", padding:"0 20px" }}>
+                {fotoSel.caption}
+              </div>
+            </div>
           )}
         </>
       );
@@ -11175,6 +11348,27 @@ export default function App() {
               }
             });
 
+            // ── Actualizar tabla de posiciones del campeonato ──
+            if (quickResult.champId && quickResult.fase === "Normal") {
+              const ch = champs.find(x => String(x.id)===String(quickResult.champId));
+              if (ch && ch.fase === "grupos") {
+                const gH = parseInt(sH)||0, gA = parseInt(sA)||0;
+                const winH = gH>gA, winA = gA>gH, draw = gH===gA;
+                const standings = JSON.parse(JSON.stringify(ch.standings||[]));
+                function upsertQ(equipo, gf, gc, win, dr) {
+                  let row = standings.find(s=>s.equipo===equipo);
+                  if (!row) { row={equipo,pj:0,g:0,e:0,p:0,gf:0,gc:0,pts:0,dg:0}; standings.push(row); }
+                  row.pj+=1; row.gf+=gf; row.gc+=gc;
+                  if(win){row.g+=1;row.pts+=3;}else if(dr){row.e+=1;row.pts+=1;}else{row.p+=1;}
+                  row.dg=row.gf-row.gc;
+                }
+                upsertQ(quickResult.home, gH, gA, winH, draw);
+                upsertQ(quickResult.away, gA, gH, winA, draw);
+                standings.sort((a,b)=>b.pts-a.pts||b.dg-a.dg||b.gf-a.gf);
+                safeSetDoc(doc(db,"champs",String(quickResult.champId)),{...ch,standings});
+              }
+            }
+
             const res=sH>sA?"🏆 VICTORIA":sH<sA?"😔 DERROTA":"🤝 EMPATE";
             addNotif(res+" · "+quickResult.home+" "+sH+"-"+sA+" "+quickResult.away,"calendario","cat:"+quickResult.cat,"resultado");
             setQuickResult(null);
@@ -11188,11 +11382,12 @@ export default function App() {
         const attM = attMatches.find(a => String(a.matchId)===String(m.id));
         const ps   = m.playerStats || {};
 
-        // Estado inicial: quiénes están marcados actualmente
-        // Si hay att_matches usar esos, sino los que tienen playerStats
+        // Estado inicial: att_matches → solo playerStats con stats reales
         const inicialIds = new Set(
           attM?.convocados?.map(String) ||
-          Object.keys(ps).map(String)
+          Object.entries(ps)
+            .filter(([,s]) => (s.goles||0)>0 || (s.asistencias||0)>0)
+            .map(([id]) => String(id))
         );
 
         // Usamos un componente interno para tener estado local
