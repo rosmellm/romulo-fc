@@ -3100,6 +3100,7 @@ export default function App() {
   const [statsEditModal, setStatsEditModal] = useState(null); // jugador a editar stats
   const [statsEdit, setStatsEdit] = useState({ goles:0, asistencias:0, partidos:0, mvps:0, yellows:0, reds:0 });
   const [historialModal, setHistorialModal] = useState(false);
+  const [verTodosPartidos, setVerTodosPartidos] = useState(false); // ver partidos de semanas pasadas
   const [trNombre,     setTrNombre]     = useState("");
   const [trFecha,      setTrFecha]      = useState("");
   const [trCat,        setTrCat]        = useState("Sub-15");
@@ -3177,29 +3178,40 @@ export default function App() {
     domingoActual.setDate(lunesActual.getDate() + 6);
     domingoActual.setHours(23,59,59,999);
 
-    return matches
-      .filter(m => {
-        const catOk = !user || user.cat === "Todas" || m.cat === user.cat;
-        const filt  = catF === "Todas" || m.cat === catF;
-        if (!catOk || !filt) return false;
-        // Ocultar partidos finalizados de semanas anteriores (antes del lunes de esta semana)
-        if (m.status === "finalizado") {
-          const fd = parseMatchDate(m.date);
-          if (fd && fd < lunesActual) return false;
-        }
-        return true;
-      })
-      .sort((a, b) => {
-        // Orden cronológico puro — "en vivo" siempre primero
+    function sortMatches(list) {
+      return list.sort((a, b) => {
         if (a.status === "en vivo" && b.status !== "en vivo") return -1;
         if (b.status === "en vivo" && a.status !== "en vivo") return  1;
-        const da  = parseMatchDate(a.date);
-        const db_ = parseMatchDate(b.date);
-        if (da && db_) return da - db_;  // más antiguo primero
-        if (da && !db_) return -1;
-        if (!da && db_) return 1;
-        return 0;
+        const order = { "próximo":0, "en vivo":0, "finalizado":1 };
+        const oa = order[a.status] ?? 0, ob = order[b.status] ?? 0;
+        if (oa !== ob) return oa - ob;
+        const da = parseMatchDate(a.date), db_ = parseMatchDate(b.date);
+        if (!da || !db_) return 0;
+        return a.status === "finalizado" ? db_ - da : da - db_;
       });
+    }
+
+    const base = matches.filter(m => {
+      const catOk = !user || user.cat === "Todas" || m.cat === user.cat;
+      const filt  = catF === "Todas" || m.cat === catF;
+      return catOk && filt;
+    });
+
+    // Vista normal: próximos + finalizados de esta semana
+    const semanaM = sortMatches(base.filter(m => {
+      if (m.status !== "finalizado") return true;
+      const fd = parseMatchDate(m.date);
+      return !fd || fd >= lunesActual;
+    }));
+
+    // Vista historial: TODOS los finalizados de semanas anteriores
+    const historialM = sortMatches(base.filter(m => {
+      if (m.status !== "finalizado") return false;
+      const fd = parseMatchDate(m.date);
+      return fd && fd < lunesActual;
+    }));
+
+    return { semana: semanaM, historial: historialM, todos: sortMatches(base) };
   })();
 
   const attCount = attSession ? filtP.filter(p => att[p.id] && att[p.id][attSession] && att[p.id][attSession].present).length : 0;
@@ -3290,28 +3302,13 @@ export default function App() {
 
   function toggleMonth(pid, m) {
     if (!can("pagos")) return;
-    const already = pay[pid] && pay[pid].months[m] && pay[pid].months[m].paid;
-    if (already) {
-      // Reversión directa con confirmación
-      setConf({
-        title: "REVERTIR PAGO",
-        msg: "¿Marcar " + m + " como pendiente?",
-        danger: true,
-        ok: () => {
-          const date = new Date().toLocaleDateString("es");
-          const updated = {
-            ...pay[pid],
-            months: { ...pay[pid].months, [m]: { paid: false, date: null, ref: null, monto: null, metodo: null } },
-            history: [...(pay[pid].history||[]), { action: "Reversión", item: m, date }]
-          };
-          safeSetDoc(doc(db, "pay", String(pid)), updated);
-        }
-      });
-    } else {
-      // Abrir modal de registro
-      setPayModal({ pid, mes: m });
-      setPayRef(""); setPayMonto(""); setPayMetodo("Transferencia"); setPayErr("");
-    }
+    // Siempre abrir el modal — muestra detalle si ya está pagado, registro si no
+    const existing = pay[pid]?.months?.[m] || {};
+    setPayModal({ pid, mes: m });
+    setPayRef(existing.ref || "");
+    setPayMonto(existing.monto || "");
+    setPayMetodo(existing.metodo || "Transferencia");
+    setPayErr("");
   }
 
   function generateReceipt(p, mes, refNum, monto, metodo, fecha, entrenador) {
@@ -4396,8 +4393,8 @@ export default function App() {
       .filter(m => m.status === "próximo" || m.status === "en vivo")
       .sort((a,b) => { const da=_pmd(a.date),db=_pmd(b.date); return da&&db?da-db:0; });
     const pastM = spM
-      .filter(m => { if(m.status!=="finalizado")return false; const fd=_pmd(m.date); return !fd||fd>=_lunesS; })
-      .sort((a,b) => { const da=_pmd(a.date),db=_pmd(b.date); return da&&db?da-db:0; });
+      .filter(m => m.status === "finalizado")
+      .sort((a,b) => { const da=_pmd(a.date),db=_pmd(b.date); return da&&db?db-da:0; }); // más reciente primero
 
     // Campeonatos: jugador/rep ven los de su categoría, visitante ve todos
     const spChamps  = spCat
@@ -7185,7 +7182,8 @@ export default function App() {
               </button>
             </div>
           )}
-          {filtM.map(m => (
+          {/* Lista de partidos de esta semana */}
+          {filtM.semana.map(m => (
             <div key={m.id}>
               <div onClick={() => m.status==="finalizado" && setMatchDetail(md => md?.id===m.id ? null : m)}
                 style={{ cursor: m.status==="finalizado" ? "pointer" : "default" }}>
@@ -7347,8 +7345,188 @@ export default function App() {
               </div>
             </div>
           ))}
-          {filtM.length === 0 && (
-            <p style={{ fontSize:9, color:"#4e6a88", textAlign:"center", padding:"20px 0" }}>Sin partidos para esta categoría</p>
+          {filtM.semana.length === 0 && (
+            <p style={{ fontSize:9, color:"var(--txt3)", textAlign:"center", padding:"12px 0" }}>Sin partidos esta semana</p>
+          )}
+
+          {/* ── Historial de semanas anteriores ── */}
+          {filtM.historial.length > 0 && (
+            <div style={{ marginTop:6 }}>
+              <div
+                onClick={() => setVerTodosPartidos(v => !v)}
+                style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
+                  padding:"8px 10px", borderRadius:8, cursor:"pointer", marginBottom:6,
+                  background:"rgba(255,255,255,.03)", border:"1px solid rgba(255,255,255,.06)" }}>
+                <span style={{ fontSize:9, color:"var(--txt3)", textTransform:"uppercase", letterSpacing:.5 }}>
+                  🗂 Partidos anteriores ({filtM.historial.length})
+                </span>
+                <span style={{ fontSize:12, color:"var(--txt3)" }}>
+                  {verTodosPartidos ? "▲" : "▼"}
+                </span>
+              </div>
+              {verTodosPartidos && filtM.historial.map(m => (
+            <div key={m.id}>
+              <div onClick={() => m.status==="finalizado" && setMatchDetail(md => md?.id===m.id ? null : m)}
+                style={{ cursor: m.status==="finalizado" ? "pointer" : "default" }}>
+                <MatchCard m={m} champs={champs} />
+              </div>
+              {/* Detalle expandido inline */}
+              {matchDetail?.id === m.id && m.status === "finalizado" && (() => {
+                const ps  = m.playerStats || {};
+                const evs = m.events || [];
+                const catPls = players.filter(p => p.cat === m.cat);
+                const goleadores = Object.entries(ps).filter(([,s])=>s.goles>0).map(([pid,s])=>{
+                  const pl=players.find(x=>String(x.id)===String(pid));
+                  return pl?{nombre:pl.nombre+" "+pl.apellido,goles:s.goles,asist:s.asistencias||0}:null;
+                }).filter(Boolean).sort((a,b)=>b.goles-a.goles);
+                const asistentes = Object.entries(ps).filter(([,s])=>s.asistencias>0).map(([pid,s])=>{
+                  const pl=players.find(x=>String(x.id)===String(pid));
+                  return pl?{nombre:pl.nombre+" "+pl.apellido,asist:s.asistencias}:null;
+                }).filter(Boolean);
+                const amarillas = evs.filter(e=>e.type==="y_us").map(e=>e.txt.replace(" tarjeta amarilla",""));
+                const rojas     = evs.filter(e=>e.type==="r_us").map(e=>e.txt.replace(" tarjeta roja",""));
+                const mvpPl = m.mvp?.playerId ? players.find(x=>String(x.id)===String(m.mvp.playerId)) : null;
+                const esCasa=(m.home||"").includes("Rómulo");
+                const gRFC=esCasa?m.scoreH:m.scoreA, gRiv=esCasa?m.scoreA:m.scoreH;
+                const res=gRFC>gRiv?"VICTORIA":gRFC<gRiv?"DERROTA":"EMPATE";
+                const resCol=res==="VICTORIA"?"#4caf50":res==="DERROTA"?"#E53935":"#d4b84a";
+                return (
+                  <div style={{ background:"rgba(21,101,192,.04)", border:"1px solid rgba(33,150,243,.1)",
+                    borderRadius:10, padding:"10px 12px", marginBottom:4, marginTop:-4 }}>
+                    {/* Resultado */}
+                    <div style={{ textAlign:"center", marginBottom:8 }}>
+                      <span style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:13,
+                        color:resCol, letterSpacing:1 }}>{res}</span>
+                      <span style={{ fontSize:8, color:"var(--txt3)", marginLeft:8 }}>{m.field}</span>
+                    </div>
+                    {/* MVP */}
+                    {(mvpPl||m.mvp?.nombre) && (
+                      <div style={{ display:"flex", alignItems:"center", gap:6, padding:"5px 8px",
+                        background:"rgba(212,184,74,.07)", borderRadius:7, marginBottom:7,
+                        border:"1px solid rgba(212,184,74,.15)" }}>
+                        <span>🏅</span>
+                        <span style={{ fontSize:9.5, color:"#d4b84a", fontWeight:600 }}>
+                          {mvpPl?mvpPl.nombre+" "+mvpPl.apellido:m.mvp?.nombre+" "+(m.mvp?.apellido||"")}
+                        </span>
+                      </div>
+                    )}
+                    {/* Goleadores */}
+                    {goleadores.length>0 && (
+                      <div style={{ marginBottom:6 }}>
+                        <div style={{ fontSize:7.5, color:"var(--txt3)", textTransform:"uppercase", letterSpacing:.5, marginBottom:4 }}>⚽ Goles</div>
+                        {goleadores.map((g,i)=>(
+                          <div key={i} style={{ display:"flex", justifyContent:"space-between", padding:"3px 6px", fontSize:9.5 }}>
+                            <span>{g.nombre}</span>
+                            <span style={{ color:"#d4b84a", fontFamily:"'Bebas Neue',sans-serif" }}>{g.goles}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {/* Asistencias */}
+                    {asistentes.length>0 && (
+                      <div style={{ marginBottom:6 }}>
+                        <div style={{ fontSize:7.5, color:"var(--txt3)", textTransform:"uppercase", letterSpacing:.5, marginBottom:4 }}>🎯 Asistencias</div>
+                        {asistentes.map((a,i)=>(
+                          <div key={i} style={{ display:"flex", justifyContent:"space-between", padding:"3px 6px", fontSize:9.5 }}>
+                            <span>{a.nombre}</span>
+                            <span style={{ color:"#7ab3e0", fontFamily:"'Bebas Neue',sans-serif" }}>{a.asist}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {/* Tarjetas */}
+                    {(amarillas.length>0||rojas.length>0) && (
+                      <div style={{ marginBottom:6 }}>
+                        <div style={{ fontSize:7.5, color:"var(--txt3)", textTransform:"uppercase", letterSpacing:.5, marginBottom:4 }}>🟨 Disciplina</div>
+                        {amarillas.map((n,i)=><div key={"y"+i} style={{ display:"flex", gap:6, padding:"3px 6px", fontSize:9 }}><span>🟨</span><span>{n}</span></div>)}
+                        {rojas.map((n,i)=><div key={"r"+i} style={{ display:"flex", gap:6, padding:"3px 6px", fontSize:9 }}><span>🟥</span><span>{n}</span></div>)}
+                      </div>
+                    )}
+                    {/* Sin datos */}
+                    {goleadores.length===0&&asistentes.length===0&&amarillas.length===0&&rojas.length===0&&!mvpPl&&!m.mvp && (
+                      <div style={{ fontSize:8.5, color:"var(--txt3)", textAlign:"center", padding:"4px 0" }}>
+                        Sin estadísticas registradas
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+              {/* MVP badge en partido finalizado */}
+              {m.status === "finalizado" && m.mvp && (
+                <div style={{ display:"flex", alignItems:"center", gap:6, background:"rgba(212,184,74,.06)",
+                  border:"1px solid rgba(212,184,74,.18)", borderRadius:8, padding:"5px 10px", marginBottom:4 }}>
+                  <span style={{ fontSize:14 }}>🏅</span>
+                  <div style={{ flex:1 }}>
+                    <span style={{ fontSize:8, color:"#8a7040", textTransform:"uppercase", letterSpacing:.5 }}>MVP · </span>
+                    <span style={{ fontSize:9.5, color:"#d4b84a", fontWeight:600 }}>
+                      {m.mvp.nombre} {m.mvp.apellido}
+                    </span>
+                  </div>
+                  {m.mvpPdfEnviado && <span className="bg bg-b" style={{ fontSize:7 }}>PDF ✓</span>}
+                </div>
+              )}
+              <div style={{ display:"flex", gap:6, marginBottom:9 }}>
+                {can("partido") && m.status === "próximo" && (
+                  <>
+                    <button className="btn" style={{ flex:1, padding:8, fontSize:11 }} onClick={() => setLiveM(m)}>
+                      🟢 En Vivo
+                    </button>
+                    <button className="btn-sm" style={{ flex:1, padding:8, fontSize:10,
+                      background:"rgba(212,184,74,.1)", color:"#d4b84a", borderColor:"rgba(212,184,74,.3)" }}
+                      onClick={() => { setQuickResult(m); setQr({ scoreH:"", scoreA:"", goleadores:[] }); setQrInput(""); }}>
+                      📋 Resultado
+                    </button>
+                  </>
+                )}
+                {/* Botón MVP para partidos finalizados */}
+                {m.status === "finalizado" && (() => {
+                  const votosM      = m.mvpVotos || {};
+                  const miVoto      = votosM[user?.id];
+                  const hoy         = new Date().toLocaleDateString("es");
+                  const totalV      = Object.keys(votosM).length;
+                  const todosV      = totalV >= Math.max(coaches.length, 1);
+                  const cerrada     = todosV; // solo cierra cuando todos votaron
+                  const pdfEnviado  = !!m.mvpPdfEnviado;
+                  const label       = pdfEnviado ? "🏅 Ver MVP"
+                    : cerrada ? (miVoto ? "📄 Generar PDF" : "🏅 Ver MVP")
+                    : miVoto  ? "🏅 Votado ✓"
+                    : "🏅 Votar MVP";
+                  const color = pdfEnviado ? "rgba(212,184,74,.15)"
+                    : !miVoto && !cerrada ? "rgba(212,184,74,.1)" : "rgba(21,101,192,.1)";
+                  return (
+                    <button className="btn-sm" style={{ flex:1, padding:"8px 10px", fontSize:10,
+                      background:color, borderColor:"rgba(212,184,74,.3)", color:"#d4b84a" }}
+                      onClick={() => setMvpModal(m.id)}>
+                      {label}
+                    </button>
+                  );
+                })()}
+
+                {/* Botón galería */}
+                {m.status === "finalizado" && (
+                  <button className="btn-sm" style={{ padding:"8px 10px", fontSize:10,
+                    background:"rgba(21,101,192,.08)", borderColor:"rgba(33,150,243,.15)", color:"#7ab3e0" }}
+                    onClick={() => setGaleriaModal(m.id)}>
+                    📸{(m.fotos?.length||0)>0?" "+m.fotos.length:""}
+                  </button>
+                )}
+                {can("calendario") && (
+                  <>
+                    <button className="btn-sm" style={{ padding:"8px 12px", fontSize:11 }} onClick={() => {
+                      setNm({ home: m.home||"Rómulo FC", away: m.away||"", date: m.date||"", time: m.time||"", cat: m.cat||"Sub-11", field: m.field||"", champId: m.champId||"", fase: m.fase||"Normal" });
+                      setEditMid(m.id);
+                      setShowMForm(true);
+                      setFormErr("");
+                    }}>✏️ Editar</button>
+                    <button className="btn-sm" style={{ padding:"8px 12px", fontSize:11, background:"rgba(183,28,28,.15)", borderColor:"rgba(183,28,28,.3)", color:"#ef9a9a" }} onClick={() => setConfirmDelM(m)}>
+                      🗑️
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+              ))}
+            </div>
           )}
 
           {showMForm && (
@@ -10785,6 +10963,9 @@ export default function App() {
       {payModal && (() => {
         const p          = players.find(x => x.id === payModal.pid);
         if (!p) return null;
+        const mesData    = pay[payModal.pid]?.months?.[payModal.mes] || {};
+        const yaPagado   = !!mesData.paid;
+        const exento     = !!mesData.exento;
         const esDivisa   = ["Efectivo USD","Zelle","Binance"].includes(payMetodo);
         const esEfectivo = ["Efectivo Bs.","Efectivo USD"].includes(payMetodo);
         const tasa       = parseFloat(tasaCambio) || 1;
@@ -10797,7 +10978,7 @@ export default function App() {
           <div className="ov" onClick={e => { if (e.target.className==="ov") setPayModal(null); }}>
             <div className="modal">
               <div className="mt2">
-                💳 Registrar Pago · {payModal.mes}
+                {yaPagado ? "✅ Pago registrado" : exento ? "🔓 Mes exento" : "💳 Registrar Pago"} · {payModal.mes}
                 <span className="mx" onClick={() => setPayModal(null)}>✕</span>
               </div>
 
@@ -10812,13 +10993,62 @@ export default function App() {
                 </div>
               </div>
 
+              {/* ── Si ya está pagado: mostrar detalle primero ── */}
+              {yaPagado && (
+                <div style={{ background:"rgba(76,175,80,.07)", border:"1px solid rgba(76,175,80,.2)",
+                  borderRadius:10, padding:"10px 12px", marginBottom:12 }}>
+                  <div style={{ fontSize:8, color:"#81c784", textTransform:"uppercase",
+                    letterSpacing:.5, marginBottom:8 }}>✅ Pago registrado</div>
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6 }}>
+                    {[
+                      ["Mes",      payModal.mes],
+                      ["Monto",    mesData.monto ? mesData.monto + (mesData.metodo?.includes("USD")||mesData.metodo==="Zelle"||mesData.metodo==="Binance" ? " USD" : " Bs.") : "—"],
+                      ["Método",   mesData.metodo || "—"],
+                      ["Fecha",    mesData.date   || "—"],
+                      ["Ref.",     mesData.ref    || "—"],
+                    ].map(([label,val]) => (
+                      <div key={label} style={{ background:"rgba(255,255,255,.03)", borderRadius:7, padding:"6px 8px" }}>
+                        <div style={{ fontSize:7.5, color:"var(--txt3)", marginBottom:2 }}>{label}</div>
+                        <div style={{ fontSize:9.5, fontWeight:600, color:"var(--txt)" }}>{val}</div>
+                      </div>
+                    ))}
+                  </div>
+                  {mesData.foto && (
+                    <img src={mesData.foto} alt="comprobante"
+                      style={{ width:"100%", borderRadius:8, marginTop:8,
+                        border:"1px solid rgba(76,175,80,.2)", maxHeight:140, objectFit:"cover" }}/>
+                  )}
+                  {/* Botón revertir */}
+                  <button className="btn-sm" style={{ width:"100%", marginTop:8, fontSize:9,
+                    background:"rgba(229,57,53,.08)", borderColor:"rgba(229,57,53,.2)", color:"#e8a0a0" }}
+                    onClick={() => setConf({
+                      title:"REVERTIR PAGO",
+                      msg:"¿Marcar "+payModal.mes+" como pendiente?",
+                      danger:true,
+                      ok:()=>{
+                        const date=new Date().toLocaleDateString("es");
+                        const updated={...pay[payModal.pid],
+                          months:{...pay[payModal.pid].months,[payModal.mes]:{paid:false,date:null,ref:null,monto:null,metodo:null}},
+                          history:[...(pay[payModal.pid].history||[]),{action:"Reversión",item:payModal.mes,date}]};
+                        safeSetDoc(doc(db,"pay",String(payModal.pid)),updated);
+                        setPayModal(null);
+                      }
+                    })}>
+                    ↩️ Revertir pago
+                  </button>
+                  <div style={{ fontSize:8, color:"var(--txt3)", textAlign:"center", marginTop:8 }}>
+                    Para corregir datos, edita los campos abajo y confirma de nuevo
+                  </div>
+                </div>
+              )}
+
               <div style={{ display:"flex", gap:6, marginBottom:12 }}>
                 <div style={{ flex:1, background:"rgba(21,101,192,.08)", borderRadius:7, padding:"7px 10px", textAlign:"center" }}>
                   <div style={{ fontSize:8, color:"#4e6a88" }}>Mes</div>
                   <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:18, color:"#7ab3e0", letterSpacing:.5 }}>{payModal.mes}</div>
                 </div>
                 <div style={{ flex:1, background:"rgba(21,101,192,.08)", borderRadius:7, padding:"7px 10px", textAlign:"center" }}>
-                  <div style={{ fontSize:8, color:"#4e6a88" }}>Registrado por</div>
+                  <div style={{ fontSize:8, color:"#4e6a88" }}>{yaPagado ? "Registrado por" : "Entrenador"}</div>
                   <div style={{ fontSize:9, fontWeight:600, color:"var(--txt)", marginTop:3 }}>{user?.name}</div>
                 </div>
               </div>
@@ -10924,8 +11154,10 @@ export default function App() {
               </div>
 
               <div style={{ display:"flex", gap:7, marginTop:8 }}>
-                <button className="btn" style={{ flex:1 }} onClick={confirmPayMonth}>
-                  ✅ CONFIRMAR Y GENERAR PDF
+                <button className="btn" style={{ flex:1,
+                  background: yaPagado ? "rgba(21,101,192,.2)" : undefined }}
+                  onClick={confirmPayMonth}>
+                  {yaPagado ? "💾 ACTUALIZAR PAGO" : "✅ CONFIRMAR Y GENERAR PDF"}
                 </button>
                 <button className="btn-sm" style={{ padding:"10px 14px" }}
                   onClick={() => { setPayModal(null); setPayFoto(null); }}>Cancelar</button>
