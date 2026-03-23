@@ -7735,14 +7735,14 @@ export default function App() {
                         Sin convocados registrados
                       </div>
                     )}
-                  {/* Botón editar convocados — para corregir partidos mal registrados */}
-                  {can("partido") && (
-                    <button className="btn-sm" style={{ width:"100%", marginTop:8, fontSize:8.5,
-                      background:"rgba(212,184,74,.08)", borderColor:"rgba(212,184,74,.2)", color:"#d4b84a" }}
-                      onClick={e=>{ e.stopPropagation(); setEditConvModal(m); setMatchDetail(null); }}>
-                      ✏️ Editar quiénes jugaron
-                    </button>
-                  )}
+                    {/* Botón editar convocados */}
+                    {can("partido") && (
+                      <button className="btn-sm" style={{ width:"100%", marginTop:8, fontSize:8.5,
+                        background:"rgba(212,184,74,.08)", borderColor:"rgba(212,184,74,.2)", color:"#d4b84a" }}
+                        onClick={e=>{ e.stopPropagation(); setEditConvModal(m); setMatchDetail(null); }}>
+                        ✏️ Editar quiénes jugaron
+                      </button>
+                    )}
                   </div>
                 );
               })()}
