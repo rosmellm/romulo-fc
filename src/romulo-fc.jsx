@@ -87,7 +87,7 @@ function timeAgo(iso) {
 
 // ── Demo guard: bloquea escrituras a Firebase en modo demo ──────
 function isDemoSession() {
-  try { const s = sessionStorage.getItem("rfc_session"); return s ? JSON.parse(s)?.isDemo : false; }
+  try { const s = localStorage.getItem("rfc_session"); return s ? JSON.parse(s)?.isDemo : false; }
   catch { return false; }
 }
 
@@ -642,7 +642,6 @@ function ConfirmDialog({ cfg, onClose }) {
 
 // ── Modal Resultado Rápido — igual que live match ────────────────────────────
 function QuickResultModal({ m, players, onClose, onSave }) {
-  // Todos los jugadores — propios de la categoría primero, luego el resto
   const CATS_ORDER = ["Sub-11","Sub-13","Sub-15","Sub-17A","Sub-17B","Sub-19"];
   const catPls = [...players].sort((a,b) => {
     const aPropio = a.cat === m.cat ? 0 : 1;
@@ -650,47 +649,62 @@ function QuickResultModal({ m, players, onClose, onSave }) {
     if (aPropio !== bPropio) return aPropio - bPropio;
     return CATS_ORDER.indexOf(a.cat) - CATS_ORDER.indexOf(b.cat);
   });
-  const [sH, setSH] = useState("");
-  const [sA, setSA] = useState("");
-  const [step, setStep] = useState("score"); // "score" | "players"
-  // Stats por jugador: { [id]: { goles, asistencias, amarilla, roja } }
-  const [ps, setPs] = useState(() => {
-    const s = {}; catPls.forEach(p => { s[p.id]={goles:0,asistencias:0,amarilla:false,roja:false}; }); return s;
-  });
-  const [selPid, setSelPid] = useState(null); // jugador seleccionado para editar
 
-  function bump(pid, field, max=99) {
-    setPs(prev => ({ ...prev, [pid]: { ...prev[pid], [field]: Math.min((prev[pid][field]||0)+1, max) } }));
+  const [sH,     setSH]     = useState("");
+  const [sA,     setSA]     = useState("");
+  const [step,   setStep]   = useState("score"); // "score" | "convocados" | "stats"
+  // Jugadores que participaron en el partido (check)
+  const [jugaron, setJugaron] = useState({});
+  // Stats por jugador
+  const [ps,     setPs]     = useState(() => {
+    const s = {};
+    catPls.forEach(p => { s[p.id] = {goles:0, asistencias:0, amarilla:false, roja:false}; });
+    return s;
+  });
+  const [selPid, setSelPid] = useState(null);
+
+  function toggleJugo(pid) {
+    setJugaron(prev => ({ ...prev, [pid]: !prev[pid] }));
+    setSelPid(null);
   }
-  function toggle(pid, field) {
-    setPs(prev => ({ ...prev, [pid]: { ...prev[pid], [field]: !prev[pid][field] } }));
+
+  function bump(pid, field) {
+    setPs(prev => ({ ...prev, [pid]: { ...prev[pid], [field]: (prev[pid][field]||0)+1 } }));
   }
   function dec(pid, field) {
     setPs(prev => ({ ...prev, [pid]: { ...prev[pid], [field]: Math.max(0,(prev[pid][field]||0)-1) } }));
   }
+  function toggleCard(pid, field) {
+    setPs(prev => ({ ...prev, [pid]: { ...prev[pid], [field]: !prev[pid][field] } }));
+  }
+
+  // Jugadores que marcamos como que jugaron
+  const convocados = catPls.filter(p => jugaron[p.id]);
 
   function handleSave() {
     const scoreH = parseInt(sH)||0, scoreA = parseInt(sA)||0;
-    // Armar events legibles
     const events = [];
-    Object.entries(ps).forEach(([pid, stat]) => {
-      const pl = catPls.find(x=>String(x.id)===String(pid));
-      if (!pl) return;
-      for (let i=0; i<(stat.goles||0); i++) events.push({ type:"goal_us", txt:"Gol: "+pl.nombre+" "+pl.apellido, ico:"⚽" });
-      for (let i=0; i<(stat.asistencias||0); i++) events.push({ type:"assist", txt:"Asistencia: "+pl.nombre, ico:"🎯" });
-      if (stat.amarilla) events.push({ type:"y_us", txt:pl.nombre+" tarjeta amarilla", ico:"🟨" });
-      if (stat.roja)     events.push({ type:"r_us", txt:pl.nombre+" tarjeta roja", ico:"🟥" });
-    });
-    // Convertir ps a playerStats para Firebase
     const playerStats = {};
-    Object.entries(ps).forEach(([pid, stat]) => {
-      if (stat.goles||stat.asistencias||stat.amarilla||stat.roja)
-        playerStats[pid] = { goles:stat.goles||0, asistencias:stat.asistencias||0 };
+
+    // Todos los convocados suman +1 partido aunque no tengan stats
+    convocados.forEach(pl => {
+      const stat = ps[pl.id] || {};
+      // Solo guardar en playerStats si tiene algo, pero el convocado siempre cuenta
+      if (stat.goles||stat.asistencias||stat.amarilla||stat.roja) {
+        playerStats[pl.id] = { goles:stat.goles||0, asistencias:stat.asistencias||0 };
+        for (let i=0;i<(stat.goles||0);i++) events.push({type:"goal_us",txt:"Gol: "+pl.nombre+" "+pl.apellido,ico:"⚽"});
+        for (let i=0;i<(stat.asistencias||0);i++) events.push({type:"assist",txt:"Asistencia: "+pl.nombre,ico:"🎯"});
+        if (stat.amarilla) events.push({type:"y_us",txt:pl.nombre+" tarjeta amarilla",ico:"🟨"});
+        if (stat.roja)     events.push({type:"r_us",txt:pl.nombre+" tarjeta roja",ico:"🟥"});
+      } else {
+        // Jugó pero sin hazañas — guardar solo para que aparezca como convocado
+        playerStats[pl.id] = { goles:0, asistencias:0 };
+      }
     });
-    onSave(scoreH, scoreA, playerStats, events);
+    onSave(scoreH, scoreA, playerStats, events, convocados.map(p=>p.id));
   }
 
-  const selP = selPid ? catPls.find(x=>String(x.id)===String(selPid)) : null;
+  const totalJugaron = convocados.length;
 
   return (
     <div className="ov" onClick={e=>{ if(e.target.className==="ov") onClose(); }}>
@@ -704,15 +718,15 @@ function QuickResultModal({ m, players, onClose, onSave }) {
         <div style={{ background:"rgba(21,101,192,.07)", borderRadius:8, padding:"8px 12px",
           marginBottom:10, textAlign:"center" }}>
           <div style={{ fontSize:10, fontWeight:600 }}>{m.home} vs {m.away}</div>
-          <div style={{ fontSize:8, color:"#4e6a88", marginTop:2 }}>{m.date} · {m.cat}</div>
+          <div style={{ fontSize:8, color:"var(--txt3)", marginTop:2 }}>{m.date} · {m.cat}</div>
         </div>
 
-        {/* Tabs */}
-        <div style={{ display:"flex", gap:5, marginBottom:12 }}>
-          {[["score","⚽ Marcador"],["players","👥 Jugadores"]].map(([k,l])=>(
-            <button key={k} className="btn-sm" style={{ flex:1, fontSize:9,
+        {/* Tabs / pasos */}
+        <div style={{ display:"flex", gap:4, marginBottom:12 }}>
+          {[["score","⚽ Marcador"],["convocados","👥 Convocados"],["stats","📊 Stats"]].map(([k,l])=>(
+            <button key={k} className="btn-sm" style={{ flex:1, fontSize:8.5,
               background:step===k?"rgba(33,150,243,.2)":"rgba(255,255,255,.03)",
-              color:step===k?"#7ab3e0":"#4e6a88",
+              color:step===k?"#7ab3e0":"var(--txt3)",
               borderColor:step===k?"rgba(33,150,243,.4)":"rgba(255,255,255,.05)" }}
               onClick={()=>setStep(k)}>{l}</button>
           ))}
@@ -723,118 +737,262 @@ function QuickResultModal({ m, players, onClose, onSave }) {
           <>
             <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:16 }}>
               <div style={{ flex:1 }}>
-                <div style={{ fontSize:8, color:"#4e6a88", marginBottom:4, textAlign:"center" }}>{m.home}</div>
+                <div style={{ fontSize:8, color:"var(--txt3)", marginBottom:4, textAlign:"center" }}>{m.home}</div>
                 <input className="inp" type="number" min="0" value={sH} onChange={e=>setSH(e.target.value)}
                   style={{ textAlign:"center", fontSize:36, fontFamily:"'Bebas Neue',sans-serif",
                     color:"#7ab3e0", padding:"8px 0" }}/>
               </div>
-              <div style={{ fontSize:22, color:"#4e6a88", fontFamily:"'Bebas Neue',sans-serif", paddingTop:20 }}>—</div>
+              <div style={{ fontSize:22, color:"var(--txt3)", fontFamily:"'Bebas Neue',sans-serif", paddingTop:20 }}>—</div>
               <div style={{ flex:1 }}>
-                <div style={{ fontSize:8, color:"#4e6a88", marginBottom:4, textAlign:"center" }}>{m.away}</div>
+                <div style={{ fontSize:8, color:"var(--txt3)", marginBottom:4, textAlign:"center" }}>{m.away}</div>
                 <input className="inp" type="number" min="0" value={sA} onChange={e=>setSA(e.target.value)}
                   style={{ textAlign:"center", fontSize:36, fontFamily:"'Bebas Neue',sans-serif",
                     color:"#e8a0a0", padding:"8px 0" }}/>
               </div>
             </div>
             <button className="btn" style={{ width:"100%" }}
-              onClick={()=>setStep("players")}>
-              Siguiente → Jugadores
+              onClick={()=>setStep("convocados")}>
+              Siguiente → Convocados
             </button>
           </>
         )}
 
-        {/* PASO 2 — Stats por jugador */}
-        {step==="players" && (
+        {/* PASO 2 — Convocados: quiénes jugaron */}
+        {step==="convocados" && (
           <>
-            <div style={{ fontSize:8.5, color:"#4e6a88", marginBottom:8 }}>
-              Toca un jugador para registrar sus stats
+            <div style={{ fontSize:8.5, color:"var(--txt3)", marginBottom:8 }}>
+              Marca los jugadores que participaron en este partido
             </div>
-            {/* Lista compacta */}
+            <div style={{ fontSize:8, color:"#7ab3e0", marginBottom:10 }}>
+              ✓ {totalJugaron} seleccionados
+            </div>
             {catPls.map(pl => {
-              const stat = ps[pl.id]||{};
-              const hasData = stat.goles||stat.asistencias||stat.amarilla||stat.roja;
-              const isSel = String(selPid)===String(pl.id);
+              const jugo = !!jugaron[pl.id];
+              const esPropio = pl.cat === m.cat;
               return (
-                <div key={pl.id}>
-                  <div onClick={()=>setSelPid(isSel?null:pl.id)}
-                    style={{ display:"flex", alignItems:"center", gap:8,
-                      padding:"8px 10px", borderRadius:8, cursor:"pointer", marginBottom:3,
-                      background: isSel?"rgba(33,150,243,.12)":"rgba(255,255,255,.02)",
-                      border:`1px solid ${isSel?"rgba(33,150,243,.3)":"rgba(255,255,255,.04)"}` }}>
-                    <div style={{ width:28, height:28, borderRadius:"50%", background:"rgba(21,101,192,.2)",
-                      display:"flex", alignItems:"center", justifyContent:"center",
-                      fontSize:10, fontWeight:700, color:"#7ab3e0", flexShrink:0 }}>
-                      {pl.nombre[0]}
+                <div key={pl.id}
+                  onClick={()=>toggleJugo(pl.id)}
+                  style={{ display:"flex", alignItems:"center", gap:10,
+                    padding:"9px 12px", marginBottom:5, borderRadius:10, cursor:"pointer",
+                    background: jugo ? "rgba(21,101,192,.12)" : "rgba(255,255,255,.02)",
+                    border:`1px solid ${jugo ? "rgba(33,150,243,.3)" : "rgba(255,255,255,.04)"}`,
+                    transition:"all .12s" }}>
+                  {/* Checkbox */}
+                  <div style={{ width:26, height:26, borderRadius:6, flexShrink:0,
+                    background: jugo ? "#1565C0" : "rgba(255,255,255,.04)",
+                    border:`2px solid ${jugo ? "#2196F3" : "rgba(255,255,255,.1)"}`,
+                    display:"flex", alignItems:"center", justifyContent:"center" }}>
+                    {jugo && <span style={{ color:"#fff", fontSize:14, fontWeight:700 }}>✓</span>}
+                  </div>
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontSize:10, fontWeight:600,
+                      color: jugo ? "#7ab3e0" : "var(--txt)" }}>
+                      {pl.nombre} {pl.apellido}
                     </div>
-                    <div style={{ flex:1 }}>
-                      <div style={{ fontSize:9.5, fontWeight:600 }}>{pl.nombre} {pl.apellido}</div>
-                      <div style={{ fontSize:7.5, color:"#4e6a88" }}>#{pl.num}</div>
-                    </div>
-                    {/* Resumen inline */}
-                    <div style={{ display:"flex", gap:4, fontSize:9 }}>
-                      {stat.goles>0 && <span style={{ color:"#d4b84a" }}>⚽{stat.goles}</span>}
-                      {stat.asistencias>0 && <span style={{ color:"#7ab3e0" }}>🎯{stat.asistencias}</span>}
-                      {stat.amarilla && <span>🟨</span>}
-                      {stat.roja && <span>🟥</span>}
-                      {!hasData && <span style={{ color:"#3a5068", fontSize:8 }}>—</span>}
+                    <div style={{ fontSize:7.5, color:"var(--txt3)" }}>
+                      #{pl.num} · {pl.cat}{!esPropio ? " 🔄" : ""}
                     </div>
                   </div>
-                  {/* Panel de edición inline */}
-                  {isSel && (
-                    <div style={{ background:"rgba(21,101,192,.06)", border:"1px solid rgba(33,150,243,.15)",
-                      borderRadius:8, padding:"10px", marginBottom:6 }}>
-                      {/* Goles */}
-                      <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8 }}>
-                        <span style={{ fontSize:9, color:"#7ab3e0", flex:1 }}>⚽ Goles</span>
-                        <button className="btn-sm" style={{ padding:"2px 10px", fontSize:14 }}
-                          onClick={()=>dec(pl.id,"goles")}>−</button>
-                        <span style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:20,
-                          color:"#d4b84a", minWidth:24, textAlign:"center" }}>{stat.goles||0}</span>
-                        <button className="btn-sm" style={{ padding:"2px 10px", fontSize:14 }}
-                          onClick={()=>bump(pl.id,"goles")}>+</button>
-                      </div>
-                      {/* Asistencias */}
-                      <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8 }}>
-                        <span style={{ fontSize:9, color:"#7ab3e0", flex:1 }}>🎯 Asistencias</span>
-                        <button className="btn-sm" style={{ padding:"2px 10px", fontSize:14 }}
-                          onClick={()=>dec(pl.id,"asistencias")}>−</button>
-                        <span style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:20,
-                          color:"#d4b84a", minWidth:24, textAlign:"center" }}>{stat.asistencias||0}</span>
-                        <button className="btn-sm" style={{ padding:"2px 10px", fontSize:14 }}
-                          onClick={()=>bump(pl.id,"asistencias")}>+</button>
-                      </div>
-                      {/* Tarjetas */}
-                      <div style={{ display:"flex", gap:8 }}>
-                        <button className="btn-sm" style={{ flex:1, fontSize:9,
-                          background: stat.amarilla?"rgba(212,184,74,.25)":"rgba(255,255,255,.03)",
-                          borderColor: stat.amarilla?"rgba(212,184,74,.5)":"rgba(255,255,255,.05)",
-                          color: stat.amarilla?"#d4b84a":"#4e6a88" }}
-                          onClick={()=>toggle(pl.id,"amarilla")}>
-                          🟨 Amarilla {stat.amarilla?"✓":""}
-                        </button>
-                        <button className="btn-sm" style={{ flex:1, fontSize:9,
-                          background: stat.roja?"rgba(229,57,53,.2)":"rgba(255,255,255,.03)",
-                          borderColor: stat.roja?"rgba(229,57,53,.4)":"rgba(255,255,255,.05)",
-                          color: stat.roja?"#e8a0a0":"#4e6a88" }}
-                          onClick={()=>toggle(pl.id,"roja")}>
-                          🟥 Roja {stat.roja?"✓":""}
-                        </button>
-                      </div>
-                    </div>
-                  )}
                 </div>
               );
             })}
             <div style={{ display:"flex", gap:6, marginTop:8 }}>
               <button className="btn-sm" style={{ flex:1 }} onClick={()=>setStep("score")}>← Marcador</button>
+              <button className="btn" style={{ flex:2 }} onClick={()=>setStep("stats")}>
+                Siguiente → Stats
+              </button>
+            </div>
+          </>
+        )}
+
+        {/* PASO 3 — Stats por jugador (solo convocados) */}
+        {step==="stats" && (
+          <>
+            {convocados.length === 0 ? (
+              <div style={{ textAlign:"center", padding:"16px 0", fontSize:9, color:"var(--txt3)" }}>
+                No hay jugadores seleccionados. ← Vuelve a Convocados.
+              </div>
+            ) : (
+              <>
+                <div style={{ fontSize:8.5, color:"var(--txt3)", marginBottom:8 }}>
+                  Registra goles, asistencias y tarjetas (opcional)
+                </div>
+                {convocados.map(pl => {
+                  const stat = ps[pl.id]||{};
+                  const hasData = stat.goles||stat.asistencias||stat.amarilla||stat.roja;
+                  const isSel = String(selPid)===String(pl.id);
+                  return (
+                    <div key={pl.id}>
+                      <div onClick={()=>setSelPid(isSel?null:pl.id)}
+                        style={{ display:"flex", alignItems:"center", gap:8,
+                          padding:"8px 10px", borderRadius:8, cursor:"pointer", marginBottom:3,
+                          background: isSel?"rgba(33,150,243,.12)":"rgba(255,255,255,.02)",
+                          border:`1px solid ${isSel?"rgba(33,150,243,.3)":"rgba(255,255,255,.04)"}` }}>
+                        <div style={{ width:26, height:26, borderRadius:"50%",
+                          background:"rgba(21,101,192,.2)", display:"flex", alignItems:"center",
+                          justifyContent:"center", fontSize:10, fontWeight:700,
+                          color:"#7ab3e0", flexShrink:0 }}>
+                          {pl.nombre[0]}
+                        </div>
+                        <div style={{ flex:1 }}>
+                          <div style={{ fontSize:9.5, fontWeight:600 }}>{pl.nombre} {pl.apellido}</div>
+                          <div style={{ fontSize:7.5, color:"var(--txt3)" }}>#{pl.num}</div>
+                        </div>
+                        <div style={{ display:"flex", gap:4, fontSize:9 }}>
+                          {stat.goles>0&&<span style={{ color:"#d4b84a" }}>⚽{stat.goles}</span>}
+                          {stat.asistencias>0&&<span style={{ color:"#7ab3e0" }}>🎯{stat.asistencias}</span>}
+                          {stat.amarilla&&<span>🟨</span>}
+                          {stat.roja&&<span>🟥</span>}
+                          {!hasData&&<span style={{ color:"var(--txt4)", fontSize:8 }}>Sin hazañas</span>}
+                        </div>
+                      </div>
+                      {isSel && (
+                        <div style={{ background:"rgba(21,101,192,.06)",
+                          border:"1px solid rgba(33,150,243,.15)",
+                          borderRadius:8, padding:"10px", marginBottom:6 }}>
+                          <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8 }}>
+                            <span style={{ fontSize:9, color:"#7ab3e0", flex:1 }}>⚽ Goles</span>
+                            <button className="btn-sm" style={{ padding:"2px 10px", fontSize:14 }}
+                              onClick={()=>dec(pl.id,"goles")}>−</button>
+                            <span style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:20,
+                              color:"#d4b84a", minWidth:24, textAlign:"center" }}>{stat.goles||0}</span>
+                            <button className="btn-sm" style={{ padding:"2px 10px", fontSize:14 }}
+                              onClick={()=>bump(pl.id,"goles")}>+</button>
+                          </div>
+                          <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8 }}>
+                            <span style={{ fontSize:9, color:"#7ab3e0", flex:1 }}>🎯 Asistencias</span>
+                            <button className="btn-sm" style={{ padding:"2px 10px", fontSize:14 }}
+                              onClick={()=>dec(pl.id,"asistencias")}>−</button>
+                            <span style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:20,
+                              color:"#d4b84a", minWidth:24, textAlign:"center" }}>{stat.asistencias||0}</span>
+                            <button className="btn-sm" style={{ padding:"2px 10px", fontSize:14 }}
+                              onClick={()=>bump(pl.id,"asistencias")}>+</button>
+                          </div>
+                          <div style={{ display:"flex", gap:8 }}>
+                            <button className="btn-sm" style={{ flex:1, fontSize:9,
+                              background:stat.amarilla?"rgba(212,184,74,.25)":"rgba(255,255,255,.03)",
+                              borderColor:stat.amarilla?"rgba(212,184,74,.5)":"rgba(255,255,255,.05)",
+                              color:stat.amarilla?"#d4b84a":"var(--txt3)" }}
+                              onClick={()=>toggleCard(pl.id,"amarilla")}>
+                              🟨 Amarilla {stat.amarilla?"✓":""}
+                            </button>
+                            <button className="btn-sm" style={{ flex:1, fontSize:9,
+                              background:stat.roja?"rgba(229,57,53,.2)":"rgba(255,255,255,.03)",
+                              borderColor:stat.roja?"rgba(229,57,53,.4)":"rgba(255,255,255,.05)",
+                              color:stat.roja?"#e8a0a0":"var(--txt3)" }}
+                              onClick={()=>toggleCard(pl.id,"roja")}>
+                              🟥 Roja {stat.roja?"✓":""}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </>
+            )}
+            <div style={{ display:"flex", gap:6, marginTop:8 }}>
+              <button className="btn-sm" style={{ flex:1 }} onClick={()=>setStep("convocados")}>← Convocados</button>
               <button className="btn" style={{ flex:2,
-                opacity:(sH===""||sA==="")?.4:1 }}
+                opacity:(sH===""||sA==="")?.5:1 }}
                 onClick={handleSave}>
                 💾 GUARDAR RESULTADO
               </button>
             </div>
           </>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ── Modal para editar convocados de un partido ya registrado ────────────────
+function EditConvModal({ m, players, inicialIds, onClose, onSave }) {
+  const CATS_ORDER = ["Sub-11","Sub-13","Sub-15","Sub-17A","Sub-17B","Sub-19"];
+  const catPls = [...players].sort((a,b) => {
+    const aPropio = a.cat === m.cat ? 0 : 1;
+    const bPropio = b.cat === m.cat ? 0 : 1;
+    if (aPropio !== bPropio) return aPropio - bPropio;
+    return CATS_ORDER.indexOf(a.cat) - CATS_ORDER.indexOf(b.cat);
+  });
+
+  const [selIds, setSelIds] = useState(() => new Set([...inicialIds].map(String)));
+
+  function toggle(pid) {
+    setSelIds(prev => {
+      const next = new Set(prev);
+      if (next.has(String(pid))) next.delete(String(pid));
+      else next.add(String(pid));
+      return next;
+    });
+  }
+
+  return (
+    <div className="ov" onClick={e=>{ if(e.target.className==="ov") onClose(); }}>
+      <div className="modal" style={{ borderTop:"3px solid #d4b84a", maxHeight:"92vh", overflowY:"auto" }}>
+        <div className="mt2" style={{ color:"#d4b84a" }}>
+          ✏️ Editar quiénes jugaron
+          <span className="mx" onClick={onClose}>✕</span>
+        </div>
+
+        <div style={{ background:"rgba(21,101,192,.07)", borderRadius:8, padding:"8px 12px",
+          marginBottom:10, textAlign:"center" }}>
+          <div style={{ fontSize:10, fontWeight:600 }}>{m.home} vs {m.away}</div>
+          <div style={{ fontSize:8, color:"var(--txt3)", marginTop:2 }}>{m.date} · {m.cat}</div>
+        </div>
+
+        <div style={{ fontSize:8.5, color:"var(--txt3)", marginBottom:8 }}>
+          Marca solo los jugadores que realmente participaron en este partido.
+          Los que quites perderán el +1 partido de sus estadísticas.
+        </div>
+        <div style={{ fontSize:8, color:"#7ab3e0", marginBottom:10 }}>
+          ✓ {selIds.size} seleccionados
+        </div>
+
+        {catPls.map(pl => {
+          const jugo = selIds.has(String(pl.id));
+          const esPropio = pl.cat === m.cat;
+          const ps = m.playerStats?.[pl.id];
+          const tieneStats = ps && (ps.goles > 0 || ps.asistencias > 0);
+          return (
+            <div key={pl.id}
+              onClick={()=>toggle(pl.id)}
+              style={{ display:"flex", alignItems:"center", gap:10,
+                padding:"9px 12px", marginBottom:4, borderRadius:10, cursor:"pointer",
+                background: jugo ? "rgba(21,101,192,.12)" : "rgba(255,255,255,.02)",
+                border:`1px solid ${jugo ? "rgba(33,150,243,.3)" : "rgba(255,255,255,.04)"}`,
+                transition:"all .12s" }}>
+              <div style={{ width:26, height:26, borderRadius:6, flexShrink:0,
+                background: jugo ? "#1565C0" : "rgba(255,255,255,.04)",
+                border:`2px solid ${jugo ? "#2196F3" : "rgba(255,255,255,.1)"}`,
+                display:"flex", alignItems:"center", justifyContent:"center" }}>
+                {jugo && <span style={{ color:"#fff", fontSize:14, fontWeight:700 }}>✓</span>}
+              </div>
+              <div style={{ flex:1 }}>
+                <div style={{ fontSize:10, fontWeight:600, color: jugo ? "#7ab3e0" : "var(--txt)" }}>
+                  {pl.nombre} {pl.apellido}
+                </div>
+                <div style={{ fontSize:7.5, color:"var(--txt3)" }}>
+                  #{pl.num} · {pl.cat}{!esPropio ? " 🔄" : ""}
+                </div>
+              </div>
+              {tieneStats && (
+                <div style={{ display:"flex", gap:4, fontSize:8.5 }}>
+                  {ps.goles>0 && <span style={{ color:"#d4b84a" }}>⚽{ps.goles}</span>}
+                  {ps.asistencias>0 && <span style={{ color:"#7ab3e0" }}>🎯{ps.asistencias}</span>}
+                </div>
+              )}
+            </div>
+          );
+        })}
+
+        <div style={{ display:"flex", gap:6, marginTop:10 }}>
+          <button className="btn-sm" style={{ flex:1 }} onClick={onClose}>Cancelar</button>
+          <button className="btn" style={{ flex:2 }}
+            onClick={()=>onSave([...selIds])}>
+            💾 GUARDAR CAMBIOS
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -933,7 +1091,7 @@ function TrPartidoCard({ p, canEdit, onSave }) {
             <div style={{ flex:1, fontSize:9.5, fontWeight:600, textAlign:"right" }}>{p.away}</div>
           </div>
           {p.jugado && p.goleadores?.length>0 && (
-            <div style={{ fontSize:7.5, color:"#4e6a88", marginBottom:5 }}>⚽ {p.goleadores.join(", ")}</div>
+            <div style={{ fontSize:7.5, color:"var(--txt3)", marginBottom:5 }}>⚽ {p.goleadores.join(", ")}</div>
           )}
           {canEdit && (
             <button className="btn-sm" style={{ width:"100%", textAlign:"center", fontSize:9 }}
@@ -1421,7 +1579,7 @@ function LiveMatch({ match, myPlayers, sanctions, setSanctions, onClose, onSave,
         <div className="hdr">
           <div className="hdr-row">
             <div>
-              <div style={{ fontSize:9, color:"#4e6a88", cursor:"pointer", marginBottom:2 }} onClick={onClose}>← Volver</div>
+              <div style={{ fontSize:9, color:"var(--txt3)", cursor:"pointer", marginBottom:2 }} onClick={onClose}>← Volver</div>
               <div className="logo"><span className="lb">REGISTRO</span> <span className="lr">RIVAL</span></div>
             </div>
             <span className="bg bg-r">{match.cat}</span>
@@ -1434,7 +1592,7 @@ function LiveMatch({ match, myPlayers, sanctions, setSanctions, onClose, onSave,
               <span className="ct">Jugadores de {match.away}</span>
               <span className="bg bg-r">{rivals.length}</span>
             </div>
-            <p style={{ fontSize:9, color:"#4e6a88", marginBottom:9, lineHeight:1.5 }}>
+            <p style={{ fontSize:9, color:"var(--txt3)", marginBottom:9, lineHeight:1.5 }}>
               Registra número y nombre para asignar faltas y tarjetas.
               Puedes continuar sin registrarlos.
             </p>
@@ -1452,12 +1610,12 @@ function LiveMatch({ match, myPlayers, sanctions, setSanctions, onClose, onSave,
               <button className="btn" style={{ width:40, padding:"7px 4px", fontSize:19 }} onClick={addRival}>+</button>
             </div>
             {rivals.length === 0 && (
-              <p style={{ fontSize:9, color:"#4e6a88", textAlign:"center", padding:"6px 0" }}>Sin jugadores aún</p>
+              <p style={{ fontSize:9, color:"var(--txt3)", textAlign:"center", padding:"6px 0" }}>Sin jugadores aún</p>
             )}
             {rivals.map(r => (
               <div key={r.num} className="riv-row">
                 <span className="riv-num">#{r.num}</span>
-                <span className="riv-name">{r.name || <em style={{ color:"#4e6a88" }}>Sin nombre</em>}</span>
+                <span className="riv-name">{r.name || <em style={{ color:"var(--txt3)" }}>Sin nombre</em>}</span>
                 <button className="btn-sm" onClick={() => {
                   setRivals(rv => rv.filter(x => x.num !== r.num));
                   setRivFouls(f => { const c = { ...f }; delete c[r.num]; return c; });
@@ -1480,7 +1638,7 @@ function LiveMatch({ match, myPlayers, sanctions, setSanctions, onClose, onSave,
         <div className="hdr">
           <div className="hdr-row">
             <div>
-              <div style={{ fontSize:9, color:"#4e6a88", cursor:"pointer", marginBottom:2 }} onClick={() => setPhase("rivals")}>← Rivales</div>
+              <div style={{ fontSize:9, color:"var(--txt3)", cursor:"pointer", marginBottom:2 }} onClick={() => setPhase("rivals")}>← Rivales</div>
               <div className="logo"><span className="lb">CONVOCATORIA</span></div>
             </div>
             <span className="bg bg-b">{convocados.length} sel.</span>
@@ -1587,7 +1745,7 @@ function LiveMatch({ match, myPlayers, sanctions, setSanctions, onClose, onSave,
               return (
                 <>
                   {filtrados.length === 0 && (
-                    <div style={{ textAlign:"center", padding:"16px 0", fontSize:9, color:"#3a5068" }}>
+                    <div style={{ textAlign:"center", padding:"16px 0", fontSize:9, color:"var(--txt4)" }}>
                       Sin jugadores con ese filtro
                     </div>
                   )}
@@ -1597,7 +1755,7 @@ function LiveMatch({ match, myPlayers, sanctions, setSanctions, onClose, onSave,
                   {/* Separador y jugadores de otras categorías */}
                   {otros.length > 0 && (
                     <>
-                      <div style={{ fontSize:7.5, color:"#3a5068", textTransform:"uppercase",
+                      <div style={{ fontSize:7.5, color:"var(--txt4)", textTransform:"uppercase",
                         letterSpacing:.5, padding:"8px 0 5px", borderTop:"1px solid rgba(255,255,255,.04)",
                         marginTop:4 }}>
                         Otras categorías — disponibles para convocar
@@ -1636,7 +1794,7 @@ function LiveMatch({ match, myPlayers, sanctions, setSanctions, onClose, onSave,
               <span className="ct" style={{ color:"#e8a0a0" }}>🔴 {match.away} — Jugadores rival</span>
               <span className="bg bg-r">{rivalPlayers.length}</span>
             </div>
-            <p style={{ fontSize:8.5, color:"#4e6a88", marginBottom:8 }}>
+            <p style={{ fontSize:8.5, color:"var(--txt3)", marginBottom:8 }}>
               Registra los jugadores del equipo rival para poder asignarles goles y tarjetas durante el partido.
             </p>
 
@@ -1652,7 +1810,7 @@ function LiveMatch({ match, myPlayers, sanctions, setSanctions, onClose, onSave,
                 </div>
                 <div style={{ flex:1 }}>
                   <div style={{ fontSize:10, fontWeight:600, color:"#e8a0a0" }}>{r.name || "Sin nombre"}</div>
-                  <div style={{ fontSize:7.5, color:"#4e6a88" }}>#{r.num} · {match.away}</div>
+                  <div style={{ fontSize:7.5, color:"var(--txt3)" }}>#{r.num} · {match.away}</div>
                 </div>
                 <button className="btn-sm" style={{ color:"#e8a0a0", padding:"2px 8px", fontSize:8 }}
                   onClick={() => { setRivals(rv => rv.filter(x => x.num !== r.num)); setRivFouls(f => { const cf={...f}; delete cf[r.num]; return cf; }); }}>
@@ -1711,7 +1869,7 @@ function LiveMatch({ match, myPlayers, sanctions, setSanctions, onClose, onSave,
             CONTINUAR → FORMACIÓN
           </button>
           {convocados.length < 5 && (
-            <p style={{ fontSize:9, color:"#4e6a88", textAlign:"center", marginTop:5 }}>Mínimo 5 jugadores</p>
+            <p style={{ fontSize:9, color:"var(--txt3)", textAlign:"center", marginTop:5 }}>Mínimo 5 jugadores</p>
           )}
         </div>
       </div>
@@ -1725,7 +1883,7 @@ function LiveMatch({ match, myPlayers, sanctions, setSanctions, onClose, onSave,
         <div className="hdr">
           <div className="hdr-row">
             <div>
-              <div style={{ fontSize:9, color:"#4e6a88", cursor:"pointer", marginBottom:2 }} onClick={() => setPhase("convocados")}>← Convocatoria</div>
+              <div style={{ fontSize:9, color:"var(--txt3)", cursor:"pointer", marginBottom:2 }} onClick={() => setPhase("convocados")}>← Convocatoria</div>
               <div className="logo"><span className="lb">FORMACIÓN</span> <span className="lr">INICIAL</span></div>
             </div>
             <span className="bg bg-b">{titulares.length}/5</span>
@@ -1770,7 +1928,7 @@ function LiveMatch({ match, myPlayers, sanctions, setSanctions, onClose, onSave,
                     <Avatar p={p} size={25} />
                     <div>
                       <div style={{ fontSize:11, fontWeight:600 }}>{p.nombre} {p.apellido}</div>
-                      <div style={{ fontSize:8, color:"#4e6a88" }}>#{p.num}</div>
+                      <div style={{ fontSize:8, color:"var(--txt3)" }}>#{p.num}</div>
                     </div>
                   </div>
                 );
@@ -1803,14 +1961,14 @@ function LiveMatch({ match, myPlayers, sanctions, setSanctions, onClose, onSave,
         </div>
         <div className="cnt">
           <div className="card" style={{ textAlign:"center", padding:18 }}>
-            <div style={{ fontSize:9, color:"#4e6a88", marginBottom:5 }}>{match.cat} · {match.date}</div>
-            <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:11, fontWeight:400, color:"#4e6a88", letterSpacing:1, marginBottom:2, }}>
+            <div style={{ fontSize:9, color:"var(--txt3)", marginBottom:5 }}>{match.cat} · {match.date}</div>
+            <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:11, fontWeight:400, color:"var(--txt3)", letterSpacing:1, marginBottom:2, }}>
               {result}
             </div>
             <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:13, fontWeight:400, color:"#8fa8c8", }}>{match.home}</div>
             <div className="sum-score">
               <span className="sum-n" style={{ color: rCol }}>{scoreUs}</span>
-              <span style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:22, color:"#4e6a88" }}>–</span>
+              <span style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:22, color:"var(--txt3)" }}>–</span>
               <span className="sum-n" style={{ color: scoreThem > scoreUs ? "#E53935" : "#4e6a88" }}>{scoreThem}</span>
             </div>
             <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:13, fontWeight:400, color:"#8fa8c8", }}>{match.away}</div>
@@ -1863,7 +2021,7 @@ function LiveMatch({ match, myPlayers, sanctions, setSanctions, onClose, onSave,
               <span className="ct">🏁 Arbitraje</span>
               <span className="bg bg-b">{convocados.length} convocados</span>
             </div>
-            <p style={{ fontSize:8.5, color:"#4e6a88", lineHeight:1.6, marginBottom:8 }}>
+            <p style={{ fontSize:8.5, color:"var(--txt3)", lineHeight:1.6, marginBottom:8 }}>
               Ingresa el monto total y marca quién ya canceló su parte.
             </p>
             <div className="inp-wrap" style={{ marginBottom:10 }}>
@@ -1872,7 +2030,7 @@ function LiveMatch({ match, myPlayers, sanctions, setSanctions, onClose, onSave,
                 onChange={e => setArbAmount(e.target.value)} />
             </div>
             {arbAmount > 0 && (
-              <div style={{ fontSize:8, color:"#4e6a88", marginBottom:8, textAlign:"center" }}>
+              <div style={{ fontSize:8, color:"var(--txt3)", marginBottom:8, textAlign:"center" }}>
                 Bs. <strong style={{ color:"#7ab3e0" }}>
                   {(parseFloat(arbAmount) / convocados.length).toFixed(2)}
                 </strong> por jugador ({convocados.length} convocados)
@@ -1973,7 +2131,7 @@ function LiveMatch({ match, myPlayers, sanctions, setSanctions, onClose, onSave,
                   border:"1px solid rgba(33,150,243,.2)", borderRadius:6, color:"#7ab3e0",
                   fontSize:13, fontFamily:"'Bebas Neue',sans-serif", padding:"3px 6px" }}
               />
-              <span style={{ fontSize:9, color:"#4e6a88" }}>min</span>
+              <span style={{ fontSize:9, color:"var(--txt3)" }}>min</span>
               <button onClick={() => setTimerSecs(parseInt(timerInput||"15") * 60)}
                 style={{ fontSize:9, padding:"4px 10px", background:"rgba(33,150,243,.12)",
                   border:"1px solid rgba(33,150,243,.25)", borderRadius:6, color:"#7ab3e0", cursor:"pointer" }}>
@@ -2016,7 +2174,7 @@ function LiveMatch({ match, myPlayers, sanctions, setSanctions, onClose, onSave,
           <div className="fcard">
             <div className="ftitle">F.Directas {period}T · RFC</div>
             <div className="fcount" style={{ color: cfU >= 4 ? "#FFD600" : "#2196F3" }}>
-              {cfU}<span style={{ fontSize:11, color:"#4e6a88", marginLeft:2 }}>/5</span>
+              {cfU}<span style={{ fontSize:11, color:"var(--txt3)", marginLeft:2 }}>/5</span>
             </div>
             <FoulDots count={cfU} max={5} />
             {cfU >= 5 && <div className="fnote" style={{ color:"#FFD600" }}>⚡ Siguiente = tiro 10m rival</div>}
@@ -2024,7 +2182,7 @@ function LiveMatch({ match, myPlayers, sanctions, setSanctions, onClose, onSave,
           <div className="fcard">
             <div className="ftitle">F.Directas {period}T · Rival</div>
             <div className="fcount" style={{ color: cfT >= 4 ? "#FFD600" : "#EF9A9A" }}>
-              {cfT}<span style={{ fontSize:11, color:"#4e6a88", marginLeft:2 }}>/5</span>
+              {cfT}<span style={{ fontSize:11, color:"var(--txt3)", marginLeft:2 }}>/5</span>
             </div>
             <FoulDots count={cfT} max={5} />
             {cfT >= 5 && <div className="fnote" style={{ color:"#FFD600" }}>⚡ Siguiente = tiro 10m RFC</div>}
@@ -2095,7 +2253,7 @@ function LiveMatch({ match, myPlayers, sanctions, setSanctions, onClose, onSave,
                 <div key={r.num} className="riv-row">
                   <span className="riv-num">#{r.num}</span>
                   <div style={{ flex:1 }}>
-                    <div className="riv-name">{r.name || <em style={{ color:"#4e6a88" }}>Sin nombre</em>}</div>
+                    <div className="riv-name">{r.name || <em style={{ color:"var(--txt3)" }}>Sin nombre</em>}</div>
                     <div className="riv-stats">
                       ⚠️{f.direct||0} · ↩️{f.indirect||0}
                       {f.yellows ? " · 🟨×" + f.yellows : ""}
@@ -2115,7 +2273,7 @@ function LiveMatch({ match, myPlayers, sanctions, setSanctions, onClose, onSave,
           </div>
           <div className="evlog">
             {events.length === 0 && (
-              <p style={{ fontSize:9, color:"#4e6a88", textAlign:"center", padding:"6px 0" }}>Sin eventos aún</p>
+              <p style={{ fontSize:9, color:"var(--txt3)", textAlign:"center", padding:"6px 0" }}>Sin eventos aún</p>
             )}
             {events.slice(0, 12).map(e => (
               <div key={e.id} className="ev">
@@ -2145,7 +2303,7 @@ function LiveMatch({ match, myPlayers, sanctions, setSanctions, onClose, onSave,
                 <div className="mt2">⚽ Gol RFC · {curMin}' <span className="mx" onClick={closeModal}>✕</span></div>
                 {selP === null ? (
                   <>
-                    <p style={{ fontSize:9, color:"#4e6a88", marginBottom:7 }}>¿Quién anotó?</p>
+                    <p style={{ fontSize:9, color:"var(--txt3)", marginBottom:7 }}>¿Quién anotó?</p>
                     <div className="psgrid">
                       {onField.map(pid => {
                         const p = myPlayers.find(x => x.id === pid);
@@ -2168,7 +2326,7 @@ function LiveMatch({ match, myPlayers, sanctions, setSanctions, onClose, onSave,
                         <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:18, color:"#7ab3e0", letterSpacing:.5 }}>
                           #{pg?.num} {pg?.nombre} {pg?.apellido}
                         </div>
-                        <div style={{ fontSize:9, color:"#4e6a88", marginTop:3 }}>Minuto {curMin}' · Confirmar gol</div>
+                        <div style={{ fontSize:9, color:"var(--txt3)", marginTop:3 }}>Minuto {curMin}' · Confirmar gol</div>
                       </div>
                       {!showAssist ? (
                         <>
@@ -2182,7 +2340,7 @@ function LiveMatch({ match, myPlayers, sanctions, setSanctions, onClose, onSave,
                         </>
                       ) : (
                         <>
-                          <p style={{ fontSize:9, color:"#4e6a88", marginBottom:5 }}>¿Quién asistió?</p>
+                          <p style={{ fontSize:9, color:"var(--txt3)", marginBottom:5 }}>¿Quién asistió?</p>
                           <div className="psgrid">
                             <div className="psbtn" style={{ opacity:.7 }} onClick={() => {
                               setShowAssist(false); doGoalUs(selP);
@@ -2218,7 +2376,7 @@ function LiveMatch({ match, myPlayers, sanctions, setSanctions, onClose, onSave,
                 <div className="mt2">⚽ Gol Rival · {curMin}' <span className="mx" onClick={closeModal}>✕</span></div>
                 {rivals.length > 0 ? (
                   <>
-                    <p style={{ fontSize:9, color:"#4e6a88", marginBottom:7 }}>¿Quién anotó?</p>
+                    <p style={{ fontSize:9, color:"var(--txt3)", marginBottom:7 }}>¿Quién anotó?</p>
                     <div className="psgrid">
                       {rivals.map(r => (
                         <div key={r.num} className={"psbtn" + (selR === r.num ? " pssel" : "")} onClick={() => setSelR(r.num)}>
@@ -2242,7 +2400,7 @@ function LiveMatch({ match, myPlayers, sanctions, setSanctions, onClose, onSave,
             {modal === "own_goal_us" && (
               <>
                 <div className="mt2">🙈 Autogol RFC · {curMin}' <span className="mx" onClick={closeModal}>✕</span></div>
-                <p style={{ fontSize:9, color:"#4e6a88", marginBottom:8 }}>
+                <p style={{ fontSize:9, color:"var(--txt3)", marginBottom:8 }}>
                   Suma 1 punto al <strong style={{ color:"#e8a0a0" }}>{match.away}</strong>.<br/>
                   ¿Quién metió el autogol?
                 </p>
@@ -2277,7 +2435,7 @@ function LiveMatch({ match, myPlayers, sanctions, setSanctions, onClose, onSave,
             {modal === "own_goal_them" && (
               <>
                 <div className="mt2">🙈 Autogol Rival · {curMin}' <span className="mx" onClick={closeModal}>✕</span></div>
-                <p style={{ fontSize:9, color:"#4e6a88", marginBottom:8 }}>
+                <p style={{ fontSize:9, color:"var(--txt3)", marginBottom:8 }}>
                   Suma 1 punto a <strong style={{ color:"#7ab3e0" }}>{match.home}</strong>.<br/>
                   {rivals.length > 0 ? "¿Quién metió el autogol?" : ""}
                 </p>
@@ -2485,7 +2643,7 @@ function LiveMatch({ match, myPlayers, sanctions, setSanctions, onClose, onSave,
             {modal === "tm_us" && (
               <>
                 <div className="mt2">⏸ Tiempo Muerto RFC <span className="mx" onClick={closeModal}>✕</span></div>
-                <p style={{ fontSize:10, color:"#4e6a88", marginBottom:9, lineHeight:1.5 }}>
+                <p style={{ fontSize:10, color:"var(--txt3)", marginBottom:9, lineHeight:1.5 }}>
                   Tiempo muerto de <strong style={{ color:"#ccd8e8" }}>Rómulo FC</strong> en el minuto {curMin}' del {period === 1 ? "primer" : "segundo"} tiempo.
                   <br /><span style={{ color:"#EF9A9A", fontSize:9 }}>Solo 1 por tiempo. No se puede revertir.</span>
                 </p>
@@ -2496,7 +2654,7 @@ function LiveMatch({ match, myPlayers, sanctions, setSanctions, onClose, onSave,
             {modal === "tm_them" && (
               <>
                 <div className="mt2">⏸ Tiempo Muerto Rival <span className="mx" onClick={closeModal}>✕</span></div>
-                <p style={{ fontSize:10, color:"#4e6a88", marginBottom:9, lineHeight:1.5 }}>
+                <p style={{ fontSize:10, color:"var(--txt3)", marginBottom:9, lineHeight:1.5 }}>
                   Tiempo muerto de <strong style={{ color:"#ccd8e8" }}>{match.away}</strong> en el minuto {curMin}'.
                 </p>
                 <button className="btn btn-red" onClick={() => doTimeout("them")}>CONFIRMAR</button>
@@ -2530,7 +2688,7 @@ function LiveMatch({ match, myPlayers, sanctions, setSanctions, onClose, onSave,
             {modal === "sub" && (
               <>
                 <div className="mt2">🔄 Cambio · {curMin}' <span className="mx" onClick={closeModal}>✕</span></div>
-                <p style={{ fontSize:9, color:"#4e6a88", marginBottom:6 }}>SALE (en cancha):</p>
+                <p style={{ fontSize:9, color:"var(--txt3)", marginBottom:6 }}>SALE (en cancha):</p>
                 <div className="psgrid">
                   {onField.map(pid => {
                     const p = myPlayers.find(x => x.id === pid);
@@ -2543,7 +2701,7 @@ function LiveMatch({ match, myPlayers, sanctions, setSanctions, onClose, onSave,
                     );
                   })}
                 </div>
-                <p style={{ fontSize:9, color:"#4e6a88", margin:"8px 0 6px" }}>ENTRA (banca):</p>
+                <p style={{ fontSize:9, color:"var(--txt3)", margin:"8px 0 6px" }}>ENTRA (banca):</p>
                 <div className="psgrid">
                   {bench.map(pid => {
                     const p = myPlayers.find(x => x.id === pid);
@@ -2577,7 +2735,7 @@ function LiveMatch({ match, myPlayers, sanctions, setSanctions, onClose, onSave,
             <div style={{ fontSize:10, color:"var(--txt)", marginBottom:6 }}>
               {match.home} {scoreUs} — {scoreThem} {match.away}
             </div>
-            <div style={{ fontSize:9, color:"#4e6a88", marginBottom:16 }}>
+            <div style={{ fontSize:9, color:"var(--txt3)", marginBottom:16 }}>
               Fase: {match.fase} · Se jugarán 2 tiempos extra de {minET} minutos
             </div>
             <button className="btn" style={{ width:"100%", marginBottom:8, background:"rgba(212,184,74,.15)", borderColor:"rgba(212,184,74,.4)", color:"#d4b84a" }}
@@ -2634,7 +2792,7 @@ function LiveMatch({ match, myPlayers, sanctions, setSanctions, onClose, onSave,
                   <button className="btn-sm" style={{ padding:"6px 10px", fontSize:11, background:"rgba(183,28,28,.15)", borderColor:"rgba(183,28,28,.3)", color:"#ef9a9a" }} onClick={() => setPenUs(p => [...p, false])}>❌ Falla</button>
                 </div>
                 {penUs.length > 0 && (
-                  <button className="btn-sm" style={{ marginTop:4, padding:"4px 8px", fontSize:9, color:"#4e6a88" }} onClick={() => setPenUs(p => p.slice(0,-1))}>↩ Deshacer</button>
+                  <button className="btn-sm" style={{ marginTop:4, padding:"4px 8px", fontSize:9, color:"var(--txt3)" }} onClick={() => setPenUs(p => p.slice(0,-1))}>↩ Deshacer</button>
                 )}
               </div>
               <div style={{ width:1, background:"rgba(255,255,255,.05)" }} />
@@ -2651,7 +2809,7 @@ function LiveMatch({ match, myPlayers, sanctions, setSanctions, onClose, onSave,
                   <button className="btn-sm" style={{ padding:"6px 10px", fontSize:11, background:"rgba(183,28,28,.15)", borderColor:"rgba(183,28,28,.3)", color:"#ef9a9a" }} onClick={() => setPenThem(p => [...p, false])}>❌ Falla</button>
                 </div>
                 {penThem.length > 0 && (
-                  <button className="btn-sm" style={{ marginTop:4, padding:"4px 8px", fontSize:9, color:"#4e6a88" }} onClick={() => setPenThem(p => p.slice(0,-1))}>↩ Deshacer</button>
+                  <button className="btn-sm" style={{ marginTop:4, padding:"4px 8px", fontSize:9, color:"var(--txt3)" }} onClick={() => setPenThem(p => p.slice(0,-1))}>↩ Deshacer</button>
                 )}
               </div>
             </div>
@@ -2677,7 +2835,7 @@ function LiveMatch({ match, myPlayers, sanctions, setSanctions, onClose, onSave,
 export default function App() {
 
   // ── Demo check (antes de estados para usarse en Firebase bypass) ──
-  const _demoSession = (() => { try { const s = sessionStorage.getItem("rfc_session"); return s ? JSON.parse(s) : null; } catch { return null; } })();
+  const _demoSession = (() => { try { const s = localStorage.getItem("rfc_session"); return s ? JSON.parse(s) : null; } catch { return null; } })();
 
 
   // ── STATE ──────────────────────────────────
@@ -2690,6 +2848,7 @@ export default function App() {
   const [dbReady,  setDbReady]  = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [attSession, setAttSession] = useState(null);
+  const [attSearch,  setAttSearch]  = useState(""); // búsqueda en pase de lista
   const [notifs,   setNotifs]   = useState([]);
 
   // ── PUSH NOTIFICATIONS ─────────────────────
@@ -2789,7 +2948,7 @@ export default function App() {
   }
 
   // Detectar modo demo antes de Firebase
-  const _demoCheck = (() => { try { const s = sessionStorage.getItem("rfc_session"); return s ? JSON.parse(s)?.isDemo : false; } catch { return false; } })();
+  const _demoCheck = (() => { try { const s = localStorage.getItem("rfc_session"); return s ? JSON.parse(s)?.isDemo : false; } catch { return false; } })();
 
   // ── FIRESTORE LISTENERS ────────────────────
   useEffect(() => {
@@ -2971,7 +3130,7 @@ export default function App() {
   }, []);
 
   // Auth — restaurar sesión si existe
-  const _savedSession = (() => { try { const s = sessionStorage.getItem("rfc_session"); return s ? JSON.parse(s) : null; } catch { return null; } })();
+  const _savedSession = (() => { try { const s = localStorage.getItem("rfc_session"); return s ? JSON.parse(s) : null; } catch { return null; } })();
   const [loggedIn, setLoggedIn] = useState(!!_savedSession);
   const [role,     setRole]     = useState(_savedSession?.role || null);
   const [user,     setUser]     = useState(_savedSession?.user || null);
@@ -3034,7 +3193,10 @@ export default function App() {
   const [mvpPdfSent, setMvpPdfSent] = useState(false);
   const [surveyTarget, setSurveyTarget] = useState(null);
   const [galeriaModal, setGaleriaModal] = useState(null);
+  const [galeriaClub, setGaleriaClub]   = useState([]); // fotos generales del club
+  const [galeriaFile, setGaleriaFile]   = useState(null);
   const [matchDetail,  setMatchDetail]  = useState(null); // partido para ver detalle
+  const [editConvModal, setEditConvModal] = useState(null); // partido para editar convocados
   const [isDemo, setIsDemo] = useState(!!_savedSession?.isDemo); // { pid, nombre, session }
   const [lastMatchResult, setLastMatchResult] = useState(null);
   const [compareModal, setCompareModal] = useState(false);
@@ -3191,14 +3353,23 @@ export default function App() {
       });
     }
 
+    // Hace 7 días — para incluir partidos recientes aunque haya cambiado de semana
+    const hace7 = new Date(hoy);
+    hace7.setDate(hoy.getDate() - 7);
+    hace7.setHours(0,0,0,0);
+
     const base = matches.filter(m => {
       const catOk = !user || user.cat === "Todas" || m.cat === user.cat;
       const filt  = catF === "Todas" || m.cat === catF;
       if (!catOk || !filt) return false;
-      // Solo partidos de esta semana (lunes a domingo)
       const fd = parseMatchDate(m.date);
-      if (!fd) return true; // sin fecha → mostrar siempre
-      return fd >= lunesActual && fd <= domingoActual;
+      if (!fd) return true;
+      if (m.status === "finalizado") {
+        // Finalizados: mostrar si son de los últimos 7 días
+        return fd >= hace7;
+      }
+      // Próximos/en vivo: mostrar si caen esta semana o después
+      return fd >= lunesActual;
     });
 
     return sortMatches(base);
@@ -3916,7 +4087,7 @@ export default function App() {
       if (!c) { setLerr("Perfil no encontrado"); return; }
       if (c.pin !== pin) { setLerr("PIN incorrecto"); return; }
       setUser(c); setLoggedIn(true);
-      sessionStorage.setItem("rfc_session", JSON.stringify({ role:"admin", user:c }));
+      localStorage.setItem("rfc_session", JSON.stringify({ role:"admin", user:c }));
       requestNotifPermission(c.id);
     } else if (role === "player") {
       // Normalizar: quitar prefijos V- E- J- P- y espacios para comparación flexible
@@ -3926,7 +4097,7 @@ export default function App() {
       if (!p) { setLerr("Cédula no registrada"); return; }
       const u = { name: p.nombre + " " + p.apellido, playerId: p.id, cat: p.cat, perms:[] };
       setUser(u); setLoggedIn(true);
-      sessionStorage.setItem("rfc_session", JSON.stringify({ role:"player", user:u }));
+      localStorage.setItem("rfc_session", JSON.stringify({ role:"player", user:u }));
       // Registrar token FCM automáticamente para recibir notificaciones push
       setTimeout(() => registerFCMToken(), 1000);
     } else if (role === "parent") {
@@ -3944,7 +4115,7 @@ export default function App() {
         perms: []
       };
       setUser(u); setLoggedIn(true);
-      sessionStorage.setItem("rfc_session", JSON.stringify({ role:"parent", user:u }));
+      localStorage.setItem("rfc_session", JSON.stringify({ role:"parent", user:u }));
     }
   }
 
@@ -3952,7 +4123,7 @@ export default function App() {
     setConf({
       title: "CERRAR SESIÓN", msg: "¿Seguro que quieres salir?",
       ok: () => {
-        sessionStorage.removeItem("rfc_session");
+        localStorage.removeItem("rfc_session");
         setLoggedIn(false); setRole(null); setUser(null);
         setSelCoach(null); setPin(""); setLid(""); setLstep("role"); setTab("inicio");
       }
@@ -4139,14 +4310,14 @@ export default function App() {
                   📲 Resumen del Partido
                   <span className="mx" onClick={() => setLastMatchResult(null)}>✕</span>
                 </div>
-                <div style={{ fontSize:9, color:"#4e6a88", marginBottom:10 }}>
+                <div style={{ fontSize:9, color:"var(--txt3)", marginBottom:10 }}>
                   Envía el resumen a representantes y jugadores de {lm.cat}
                 </div>
                 <div style={{ background:"var(--card)", borderRadius:8, padding:"10px", marginBottom:10,
                   fontSize:9, whiteSpace:"pre-wrap", color:"var(--txt)", border:"1px solid rgba(33,150,243,.1)" }}>
                   {msg}
                 </div>
-                <div style={{ fontSize:8, color:"#3a5068", marginBottom:6 }}>
+                <div style={{ fontSize:8, color:"var(--txt4)", marginBottom:6 }}>
                   {catPls.length} contactos en {lm.cat}
                 </div>
                 <div style={{ display:"flex", gap:7 }}>
@@ -4176,16 +4347,50 @@ export default function App() {
   // ── LOGIN ──────────────────────────────────
   if (!dbReady) {
     return (
-      <div style={{ background:"var(--bg)", minHeight:"100vh", display:"flex", flexDirection:"column",
-        alignItems:"center", justifyContent:"center", gap:16 }}>
-        <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:42, letterSpacing:4 }}>
-          <span style={{ color:"#2196F3" }}>RÓMULO</span> <span style={{ color:"#E53935" }}>F.C</span>
+      <div style={{ background:"#04060c", minHeight:"100vh", display:"flex", flexDirection:"column",
+        alignItems:"center", justifyContent:"center", gap:0, position:"relative", overflow:"hidden" }}>
+        <style>{`
+          @keyframes spin { to { transform: rotate(360deg); } }
+          @keyframes fadeUp { from { opacity:0; transform:translateY(18px); } to { opacity:1; transform:translateY(0); } }
+          @keyframes pulse { 0%,100%{opacity:.6} 50%{opacity:1} }
+          @keyframes ringPulse { 0%{transform:scale(1);opacity:.6} 50%{transform:scale(1.08);opacity:1} 100%{transform:scale(1);opacity:.6} }
+          .load-logo { animation: fadeUp .6s ease forwards; }
+          .load-sub   { animation: fadeUp .6s ease .2s both; }
+          .load-ring  { animation: ringPulse 2s ease-in-out infinite; }
+          .load-dot   { animation: pulse 1.4s ease-in-out infinite; }
+          .load-dot:nth-child(2) { animation-delay:.2s }
+          .load-dot:nth-child(3) { animation-delay:.4s }
+        `}</style>
+        {/* Fondo con gradiente sutil */}
+        <div style={{ position:"absolute", inset:0,
+          background:"radial-gradient(ellipse at 30% 40%, rgba(21,101,192,.08) 0%, transparent 60%), radial-gradient(ellipse at 70% 60%, rgba(183,28,28,.05) 0%, transparent 60%)" }}/>
+        {/* Logo */}
+        <div className="load-logo" style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:52,
+          letterSpacing:5, lineHeight:1, marginBottom:6, position:"relative" }}>
+          <span style={{ color:"#2196F3" }}>RÓMULO</span>{" "}
+          <span style={{ color:"#E53935" }}>F.C</span>
         </div>
-        <div style={{ fontSize:9, color:"#3a5068", letterSpacing:2, textTransform:"uppercase" }}>Conectando con la base de datos...</div>
-        <div style={{ width:40, height:40, border:"3px solid rgba(33,150,243,.15)",
-          borderTop:"3px solid #2196F3", borderRadius:"50%",
-          animation:"spin 1s linear infinite" }} />
-        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+        {/* Subtítulo */}
+        <div className="load-sub" style={{ fontSize:8.5, color:"var(--txt4)", letterSpacing:3,
+          textTransform:"uppercase", marginBottom:32 }}>
+          Sistema de Gestión
+        </div>
+        {/* Anillo animado */}
+        <div className="load-ring" style={{ width:48, height:48, borderRadius:"50%", marginBottom:20,
+          border:"2px solid rgba(33,150,243,.12)", position:"relative", display:"flex",
+          alignItems:"center", justifyContent:"center" }}>
+          <div style={{ width:48, height:48, border:"2px solid transparent",
+            borderTop:"2px solid #2196F3", borderRadius:"50%", position:"absolute",
+            animation:"spin .9s linear infinite" }}/>
+          <div style={{ width:6, height:6, borderRadius:"50%", background:"#E53935" }}/>
+        </div>
+        {/* Puntos de carga */}
+        <div style={{ display:"flex", gap:6 }}>
+          {[0,1,2].map(i => (
+            <div key={i} className="load-dot" style={{ width:5, height:5, borderRadius:"50%",
+              background:"rgba(33,150,243,.4)", animationDelay: i*0.2+"s" }}/>
+          ))}
+        </div>
       </div>
     );
   }
@@ -4221,7 +4426,7 @@ export default function App() {
               return (
               <>
                 <div className="ltitle">🎮 Modo Demo</div>
-                <div style={{ fontSize:8.5, color:"#4e6a88", marginBottom:10, textAlign:"center", lineHeight:1.6 }}>
+                <div style={{ fontSize:8.5, color:"var(--txt3)", marginBottom:10, textAlign:"center", lineHeight:1.6 }}>
                   Explora todas las funciones de Rómulo F.C con datos de ejemplo.<br/>
                   Los datos demo son ficticios y no afectan la base de datos real.
                 </div>
@@ -4230,7 +4435,7 @@ export default function App() {
                     const u = { id:99, name:"Demo Entrenador", role:"Director Técnico", cat:"Todas",
                       perms:["inicio","jugadores","asistencia","pagos","calendario","entrenamientos","campeonatos","uniformes","chat","stats","entrenadores","config","partido"] };
                     setUser(u); setRole("admin"); setLoggedIn(true); setIsDemo(true);
-                    sessionStorage.setItem("rfc_session", JSON.stringify({ role:"admin", user:u, isDemo:true }));
+                    localStorage.setItem("rfc_session", JSON.stringify({ role:"admin", user:u, isDemo:true }));
                   }}>
                     <div className="ro-ico">🧑‍💼</div>
                     <div className="ro-lbl">Entrenador</div>
@@ -4241,7 +4446,7 @@ export default function App() {
                     const u = { name:demoP.nombre+" "+demoP.apellido, playerId:demoP.id, cat:demoP.cat,
                       role:"Jugador Demo", perms:[] };
                     setUser(u); setRole("player"); setLoggedIn(true); setIsDemo(true);
-                    sessionStorage.setItem("rfc_session", JSON.stringify({ role:"player", user:u, isDemo:true }));
+                    localStorage.setItem("rfc_session", JSON.stringify({ role:"player", user:u, isDemo:true }));
                   }}>
                     <div className="ro-ico">⚽</div>
                     <div className="ro-lbl">Jugador</div>
@@ -4252,7 +4457,7 @@ export default function App() {
                     const u = { name:"Rep. "+demoP.nombre, playerId:demoP.id, cat:demoP.cat,
                       role:"Representante Demo", perms:[], repMode:true };
                     setUser(u); setRole("player"); setLoggedIn(true); setIsDemo(true);
-                    sessionStorage.setItem("rfc_session", JSON.stringify({ role:"player", user:u, isDemo:true }));
+                    localStorage.setItem("rfc_session", JSON.stringify({ role:"player", user:u, isDemo:true }));
                   }}>
                     <div className="ro-ico">👨‍👦</div>
                     <div className="ro-lbl">Representante</div>
@@ -4261,7 +4466,7 @@ export default function App() {
                   <div className="ropt" onClick={() => {
                     const u = { name:"Visitante Demo", playerId:null, cat:"Todas", perms:[] };
                     setUser(u); setRole("player"); setLoggedIn(true); setIsDemo(true);
-                    sessionStorage.setItem("rfc_session", JSON.stringify({ role:"player", user:u, isDemo:true }));
+                    localStorage.setItem("rfc_session", JSON.stringify({ role:"player", user:u, isDemo:true }));
                   }}>
                     <div className="ro-ico">👁️</div>
                     <div className="ro-lbl">Visitante</div>
@@ -4296,7 +4501,7 @@ export default function App() {
                   <div className="ropt" onClick={() => {
                     const u = { name:"Visitante", playerId:null, cat:"Todas", perms:[] };
                     setUser(u); setRole("player"); setLoggedIn(true);
-                    sessionStorage.setItem("rfc_session", JSON.stringify({ role:"player", user:u }));
+                    localStorage.setItem("rfc_session", JSON.stringify({ role:"player", user:u }));
                   }}>
                     <div className="ro-ico">👁️</div>
                     <div className="ro-lbl">Visitante</div>
@@ -4330,7 +4535,7 @@ export default function App() {
             {lstep === "pin_p" && (
               <>
                 <div className="ltitle">Acceso Jugador</div>
-                <p style={{ fontSize:9, color:"#4e6a88", marginBottom:8 }}>Ingresa tu cédula de identidad:</p>
+                <p style={{ fontSize:9, color:"var(--txt3)", marginBottom:8 }}>Ingresa tu cédula de identidad:</p>
                 <input className="linp" placeholder="Ej: V-28100001"
                   value={lid} onChange={e => setLid(e.target.value)}
                   onKeyDown={e => e.key === "Enter" && doLogin()}
@@ -4344,7 +4549,7 @@ export default function App() {
             {lstep === "pin_r" && (
               <>
                 <div className="ltitle">Acceso Representante</div>
-                <p style={{ fontSize:9, color:"#4e6a88", marginBottom:8 }}>Ingresa tu cédula de identidad:</p>
+                <p style={{ fontSize:9, color:"var(--txt3)", marginBottom:8 }}>Ingresa tu cédula de identidad:</p>
                 <input className="linp" placeholder="Ej: V-12000001"
                   value={lid} onChange={e => setLid(e.target.value)}
                   onKeyDown={e => e.key === "Enter" && doLogin()}
@@ -4381,12 +4586,27 @@ export default function App() {
     const _diaS   = _hoyS.getDay()===0?6:_hoyS.getDay()-1;
     const _lunesS = new Date(_hoyS); _lunesS.setHours(0,0,0,0); _lunesS.setDate(_hoyS.getDate()-_diaS);
     function _pmd(ds){ if(!ds)return null; if(/^\d{4}-\d{2}-\d{2}$/.test(ds.trim())){const[y,mo,d]=ds.trim().split("-").map(Number);return new Date(y,mo-1,d);} const MS={Ene:0,Feb:1,Mar:2,Abr:3,May:4,Jun:5,Jul:6,Ago:7,Sep:8,Oct:9,Nov:10,Dic:11};const ps=ds.trim().split(/\s+/);if(ps.length>=2){const dd=parseInt(ps[0]),mm=MS[ps[1]],yy=ps[2]?parseInt(ps[2]):new Date().getFullYear();if(!isNaN(dd)&&mm!==undefined)return new Date(yy,mm,dd);}return null;}
+    // Domingo de la semana actual
+    const _domingoS = new Date(_lunesS);
+    _domingoS.setDate(_lunesS.getDate() + 6);
+    _domingoS.setHours(23,59,59,999);
+
     const nextM = spM
-      .filter(m => m.status === "próximo" || m.status === "en vivo")
+      .filter(m => {
+        if (m.status !== "próximo" && m.status !== "en vivo") return false;
+        const fd = _pmd(m.date);
+        if (!fd) return true;
+        return fd >= _lunesS && fd <= _domingoS;
+      })
       .sort((a,b) => { const da=_pmd(a.date),db=_pmd(b.date); return da&&db?da-db:0; });
     const pastM = spM
-      .filter(m => m.status === "finalizado")
-      .sort((a,b) => { const da=_pmd(a.date),db=_pmd(b.date); return da&&db?db-da:0; }); // más reciente primero
+      .filter(m => {
+        if (m.status !== "finalizado") return false;
+        const fd = _pmd(m.date);
+        if (!fd) return false;
+        return fd >= _lunesS && fd <= _domingoS;
+      })
+      .sort((a,b) => { const da=_pmd(a.date),db=_pmd(b.date); return da&&db?db-da:0; });
 
     // Campeonatos: jugador/rep ven los de su categoría, visitante ve todos
     const spChamps  = spCat
@@ -4417,8 +4637,8 @@ export default function App() {
     // Mini tabla de posiciones reutilizable
     function MiniStandings({ ch }) {
       if (!ch.standings || ch.standings.length === 0)
-        return <p style={{ fontSize:9, color:"#4e6a88", textAlign:"center", padding:"6px 0" }}>Sin datos aún</p>;
-      const thS = { fontSize:7, color:"#3a5068", textAlign:"center", padding:"3px 2px", fontWeight:500, textTransform:"uppercase" };
+        return <p style={{ fontSize:9, color:"var(--txt3)", textAlign:"center", padding:"6px 0" }}>Sin datos aún</p>;
+      const thS = { fontSize:7, color:"var(--txt4)", textAlign:"center", padding:"3px 2px", fontWeight:500, textTransform:"uppercase" };
       return (
         <div style={{ overflowX:"auto" }}>
           <table style={{ width:"100%", borderCollapse:"collapse", tableLayout:"fixed" }}>
@@ -4473,7 +4693,7 @@ export default function App() {
                 <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:44, letterSpacing:4, lineHeight:1 }}>
                   <span style={{ color:"#2196F3" }}>RÓMULO</span> <span style={{ color:"#E53935" }}>F.C</span>
                 </div>
-                <div style={{ fontSize:8, color:"#3a5068", letterSpacing:2, textTransform:"uppercase", marginTop:4 }}>Academia de Fútbol Sala · 2026</div>
+                <div style={{ fontSize:8, color:"var(--txt4)", letterSpacing:2, textTransform:"uppercase", marginTop:4 }}>Academia de Fútbol Sala · 2026</div>
               </div>
               <div className="sr4" style={{ marginTop:9 }}>
                 <div className="sb"><div className="sn" style={{ color:"#2196F3" }}>{totalJ}</div><div className="sl">Jugadores</div></div>
@@ -4494,11 +4714,11 @@ export default function App() {
                     <span className="bg bg-y">🏆</span>
                   </div>
                 ))}
-                {champs.filter(c=>c.activo).length===0 && <p style={{ fontSize:9, color:"#4e6a88", textAlign:"center" }}>Sin campeonatos activos</p>}
+                {champs.filter(c=>c.activo).length===0 && <p style={{ fontSize:9, color:"var(--txt3)", textAlign:"center" }}>Sin campeonatos activos</p>}
               </div>
               {nextM.slice(0,2).map(m => (
                 <div key={m.id}>
-                  <div style={{ fontSize:8, color:"#3a5068", letterSpacing:1, textTransform:"uppercase", marginBottom:3 }}>Próximo partido</div>
+                  <div style={{ fontSize:8, color:"var(--txt4)", letterSpacing:1, textTransform:"uppercase", marginBottom:3 }}>Próximo partido</div>
                   <MatchCard m={m} champs={champs} />
                 </div>
               ))}
@@ -4507,7 +4727,7 @@ export default function App() {
         }
 
         // Jugador / Representante
-        if (!sp) return <div className="card"><p style={{ fontSize:9, color:"#4e6a88", textAlign:"center", padding:10 }}>Jugador no encontrado.</p></div>;
+        if (!sp) return <div className="card"><p style={{ fontSize:9, color:"var(--txt3)", textAlign:"center", padding:10 }}>Jugador no encontrado.</p></div>;
         const susp = spSanc?.suspended;
         const yell = spSanc?.yellows || 0;
         const reds = spSanc?.reds    || 0;
@@ -4524,7 +4744,7 @@ export default function App() {
             {isParent && allChildIds.length > 1 && (
               <div style={{ background:"rgba(21,101,192,.08)", border:"1px solid rgba(33,150,243,.15)",
                 borderRadius:10, padding:"10px 12px", marginBottom:10 }}>
-                <div style={{ fontSize:8, color:"#3a5068", textTransform:"uppercase", letterSpacing:.5, marginBottom:7 }}>
+                <div style={{ fontSize:8, color:"var(--txt4)", textTransform:"uppercase", letterSpacing:.5, marginBottom:7 }}>
                   👨‍👦 Tus jugadores
                 </div>
                 <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
@@ -4549,7 +4769,7 @@ export default function App() {
                           <div style={{ fontSize:10, fontWeight:600, color: isActive?"#7ab3e0":"#c0cfe0" }}>
                             {child.nombre} {child.apellido}
                           </div>
-                          <div style={{ fontSize:8, color:"#4e6a88" }}>{child.cat} · #{child.num}</div>
+                          <div style={{ fontSize:8, color:"var(--txt3)" }}>{child.cat} · #{child.num}</div>
                         </div>
                         {isActive && <span style={{ fontSize:10, color:"#2196F3" }}>●</span>}
                       </div>
@@ -4565,7 +4785,7 @@ export default function App() {
               </div>
               <div className="hero-name">{sp.nombre} {sp.apellido}</div>
               <div className="hero-cat">{sp.cat} · #{sp.num} · {calcAge(sp.dob)} años</div>
-              <div style={{ fontSize:8, color:"#4e6a88", marginTop:3 }}>CI: {sp.cedula || "—"}</div>
+              <div style={{ fontSize:8, color:"var(--txt3)", marginTop:3 }}>CI: {sp.cedula || "—"}</div>
               <button className="btn-sm" style={{ marginTop:8, background:"rgba(212,184,74,.1)",
                 color:"#d4b84a", borderColor:"rgba(212,184,74,.3)", fontSize:9, padding:"5px 14px" }}
                 onClick={() => generatePerfilPdf(sp, pay, att, matches, attMatches, sanc)}>
@@ -4591,18 +4811,18 @@ export default function App() {
               <div style={{ display:"flex", gap:8, justifyContent:"center", marginTop:10 }}>
                 <div style={{ textAlign:"center", background:"rgba(21,101,192,.1)", borderRadius:8, padding:"6px 14px" }}>
                   <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:20, color:"#7ab3e0" }}>{attPctSp}%</div>
-                  <div style={{ fontSize:7.5, color:"#4e6a88" }}>Asistencia</div>
+                  <div style={{ fontSize:7.5, color:"var(--txt3)" }}>Asistencia</div>
                 </div>
                 <div style={{ textAlign:"center", background:"rgba(21,101,192,.1)", borderRadius:8, padding:"6px 14px" }}>
                   <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:20, color: spPay && ACTIVE_MONTHS.filter(m=>!spPay.months[m]?.paid&&!spPay.months[m]?.exento).length===0 ? "#43A047" : "#E53935" }}>
                     {spPay ? ACTIVE_MONTHS.filter(m=>spPay.months[m]?.paid||spPay.months[m]?.exento).length : 0}/{ACTIVE_MONTHS.length}
                   </div>
-                  <div style={{ fontSize:7.5, color:"#4e6a88" }}>Meses pagos</div>
+                  <div style={{ fontSize:7.5, color:"var(--txt3)" }}>Meses pagos</div>
                 </div>
                 {lastPago && (
                   <div style={{ textAlign:"center", background:"rgba(21,101,192,.1)", borderRadius:8, padding:"6px 14px" }}>
                     <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:13, color:"#7ab3e0", marginTop:2 }}>{lastPago.item}</div>
-                    <div style={{ fontSize:7.5, color:"#4e6a88" }}>Último pago</div>
+                    <div style={{ fontSize:7.5, color:"var(--txt3)" }}>Último pago</div>
                   </div>
                 )}
               </div>
@@ -4612,14 +4832,14 @@ export default function App() {
               <div style={{ marginTop:10 }}>
                 {/* Categoría propia */}
                 <div style={{ background:"rgba(21,101,192,.08)", borderRadius:8, padding:"8px 10px", marginBottom:6, border:"1px solid rgba(33,150,243,.12)" }}>
-                  <div style={{ fontSize:7.5, color:"#3a5068", textTransform:"uppercase", letterSpacing:.5, marginBottom:6 }}>
+                  <div style={{ fontSize:7.5, color:"var(--txt4)", textTransform:"uppercase", letterSpacing:.5, marginBottom:6 }}>
                     📊 {sp.cat} <span style={{ color:"#2196F3", fontWeight:600 }}>(categoría propia)</span>
                   </div>
                   <div style={{ display:"flex", gap:12, justifyContent:"center" }}>
                     {[["⚽", sp.stats?.goles||0, "Goles"], ["🎯", sp.stats?.asistencias||0, "Asist."], ["🏟️", sp.stats?.partidos||0, "Partidos"]].map(([ic,val,lb])=>(
                       <div key={lb} style={{ textAlign:"center" }}>
                         <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:20, color:"#7ab3e0" }}>{val}</div>
-                        <div style={{ fontSize:7, color:"#4e6a88" }}>{ic} {lb}</div>
+                        <div style={{ fontSize:7, color:"var(--txt3)" }}>{ic} {lb}</div>
                       </div>
                     ))}
                   </div>
@@ -4654,7 +4874,7 @@ export default function App() {
             {susp && (
               <div className="card card-r">
                 <div style={{ fontSize:10, color:"#e8a0a0", fontWeight:600, marginBottom:4 }}>⚠️ Estás suspendido</div>
-                <div style={{ fontSize:9, color:"#4e6a88", lineHeight:1.6 }}>No puedes participar en el próximo partido. Contacta al entrenador para más información.</div>
+                <div style={{ fontSize:9, color:"var(--txt3)", lineHeight:1.6 }}>No puedes participar en el próximo partido. Contacta al entrenador para más información.</div>
               </div>
             )}
 
@@ -4695,7 +4915,7 @@ export default function App() {
                   })}
                 </div>
                 <div style={{ display:"flex", justifyContent:"space-between", fontSize:9, marginTop:7, paddingTop:7, borderTop:"1px solid rgba(255,255,255,.04)" }}>
-                  <span style={{ color:"#4e6a88" }}>Campeonatos</span>
+                  <span style={{ color:"var(--txt3)" }}>Campeonatos</span>
                   <span className={"bg " + (champs.filter(ch=>ch.cats.includes(sp.cat)).every(ch=>spPay.championships?.[ch.id]?.paid) ? "bg-b" : "bg-r")}>
                     {champs.filter(ch=>ch.cats.includes(sp.cat)).filter(ch=>spPay.championships?.[ch.id]?.paid).length}/
                     {champs.filter(ch=>ch.cats.includes(sp.cat)).length} pagados
@@ -4715,8 +4935,8 @@ export default function App() {
                   <div key={t.id} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"6px 0", borderBottom:"1px solid rgba(255,255,255,.02)" }}>
                     <div>
                       <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:13, letterSpacing:.5, color:"var(--txt)" }}>{fechaT}</div>
-                      <div style={{ fontSize:8, color:"#4e6a88" }}>⏰ {t.hora} · 📍 {t.lugar}</div>
-                      {t.tema && <div style={{ fontSize:7.5, color:"#4e6a88", marginTop:1 }}>📋 {t.tema}</div>}
+                      <div style={{ fontSize:8, color:"var(--txt3)" }}>⏰ {t.hora} · 📍 {t.lugar}</div>
+                      {t.tema && <div style={{ fontSize:7.5, color:"var(--txt3)", marginTop:1 }}>📋 {t.tema}</div>}
                     </div>
                     <span className="bg bg-b">{sp.cat}</span>
                   </div>
@@ -4752,7 +4972,7 @@ export default function App() {
                   );
                 })}
                 {sp.eval_comentario && (
-                  <div style={{ fontSize:8, color:"#4e6a88", marginTop:8, fontStyle:"italic", borderTop:"1px solid rgba(255,255,255,.04)", paddingTop:7 }}>
+                  <div style={{ fontSize:8, color:"var(--txt3)", marginTop:8, fontStyle:"italic", borderTop:"1px solid rgba(255,255,255,.04)", paddingTop:7 }}>
                     💬 "{sp.eval_comentario}"
                   </div>
                 )}
@@ -4795,7 +5015,7 @@ export default function App() {
                           </div>
                         </div>
                         <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
-                          <span style={{ fontSize:7.5, color:"#4e6a88" }}>📅 {m.date}</span>
+                          <span style={{ fontSize:7.5, color:"var(--txt3)" }}>📅 {m.date}</span>
                           {convocado
                             ? <span className="bg bg-b" style={{ fontSize:7 }}>{titular ? "Titular" : "Suplente"}</span>
                             : <span className="bg bg-n" style={{ fontSize:7 }}>No convocado</span>}
@@ -4817,10 +5037,10 @@ export default function App() {
                   <div key={i} style={{ padding:"6px 0", borderBottom:"1px solid rgba(255,255,255,.02)" }}>
                     <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
                       <span style={{ fontSize:10, color:"#e8a0a0" }}>🩹 {l.tipo}</span>
-                      <span style={{ fontSize:8, color:"#4e6a88" }}>{l.fecha}</span>
+                      <span style={{ fontSize:8, color:"var(--txt3)" }}>{l.fecha}</span>
                     </div>
-                    <div style={{ fontSize:8, color:"#4e6a88", marginTop:2 }}>⏱ Recuperación: {l.recuperacion}</div>
-                    {l.notas && <div style={{ fontSize:7.5, color:"#3a5068", marginTop:1 }}>{l.notas}</div>}
+                    <div style={{ fontSize:8, color:"var(--txt3)", marginTop:2 }}>⏱ Recuperación: {l.recuperacion}</div>
+                    {l.notas && <div style={{ fontSize:7.5, color:"var(--txt4)", marginTop:1 }}>{l.notas}</div>}
                   </div>
                 ))}
               </div>
@@ -4864,7 +5084,7 @@ export default function App() {
                       {ok ? "Pagado ✅" : "Pendiente ❌"}
                     </span>
                   </div>
-                  <p style={{ fontSize:9, color:"#4e6a88", lineHeight:1.6 }}>
+                  <p style={{ fontSize:9, color:"var(--txt3)", lineHeight:1.6 }}>
                     {ok
                       ? "Inscripción pagada" + (fecha ? " el " + fecha : "") + "."
                       : "Inscripción pendiente. Contacta al entrenador para regularizar."}
@@ -4878,7 +5098,7 @@ export default function App() {
                 <div style={{ display:"flex", gap:4, flexWrap:"wrap" }}>
                   {pendMeses.map(m => <span key={m} className="bg bg-r">{m}</span>)}
                 </div>
-                <p style={{ fontSize:9, color:"#4e6a88", marginTop:8, lineHeight:1.6 }}>
+                <p style={{ fontSize:9, color:"var(--txt3)", marginTop:8, lineHeight:1.6 }}>
                   Contacta a tu entrenador o dirígete a la administración para ponerte al día.
                 </p>
               </div>
@@ -4893,7 +5113,7 @@ export default function App() {
           <>
             <div className="st">🏆 {isVisitor ? "Campeonatos" : "Mis Campeonatos"}</div>
             {spChamps.length === 0 && (
-              <div className="card"><p style={{ fontSize:9, color:"#4e6a88", textAlign:"center", padding:10 }}>Sin campeonatos activos</p></div>
+              <div className="card"><p style={{ fontSize:9, color:"var(--txt3)", textAlign:"center", padding:10 }}>Sin campeonatos activos</p></div>
             )}
             {spChamps.map(ch => (
               <div key={ch.id} className="card" style={{ marginBottom:8 }}>
@@ -4922,17 +5142,17 @@ export default function App() {
             <div className="st">📅 {isVisitor ? "Partidos" : "Mis Partidos"}</div>
             {nextM.length > 0 && (
               <>
-                <div style={{ fontSize:8, color:"#3a5068", letterSpacing:1, textTransform:"uppercase", marginBottom:5 }}>Próximos</div>
+                <div style={{ fontSize:8, color:"var(--txt4)", letterSpacing:1, textTransform:"uppercase", marginBottom:5 }}>Próximos</div>
                 {nextM.map(m => <MatchCard key={m.id} m={m} champs={champs} />)}
               </>
             )}
             {pastM.length > 0 && (
               <>
-                <div style={{ fontSize:8, color:"#3a5068", letterSpacing:1, textTransform:"uppercase", margin:"10px 0 5px" }}>Jugados</div>
+                <div style={{ fontSize:8, color:"var(--txt4)", letterSpacing:1, textTransform:"uppercase", margin:"10px 0 5px" }}>Jugados</div>
                 {pastM.map(m => <MatchCard key={m.id} m={m} champs={champs} />)}
               </>
             )}
-            {spM.length === 0 && <div className="card"><p style={{ fontSize:9, color:"#4e6a88", textAlign:"center", padding:10 }}>Sin partidos</p></div>}
+            {spM.length === 0 && <div className="card"><p style={{ fontSize:9, color:"var(--txt3)", textAlign:"center", padding:10 }}>Sin partidos</p></div>}
           </>
         );
       }
@@ -4977,7 +5197,7 @@ export default function App() {
               <button className="btn-sm" onClick={()=>{ if(agendaMes===11){setAgendaMes(0);setAgendaAnio(agendaAnio+1);}else setAgendaMes(agendaMes+1); }}>›</button>
             </div>
             <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:2, marginBottom:3 }}>
-              {DIAS_S2.map(d=><div key={d} style={{ textAlign:"center", fontSize:7, color:"#3a5068", fontWeight:600 }}>{d}</div>)}
+              {DIAS_S2.map(d=><div key={d} style={{ textAlign:"center", fontSize:7, color:"var(--txt4)", fontWeight:600 }}>{d}</div>)}
             </div>
             <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:2, marginBottom:10 }}>
               {celdas2.map((d,i)=>{
@@ -4995,7 +5215,7 @@ export default function App() {
                     <div style={{ fontSize:9,fontWeight:esHoy?700:400,color:esHoy?"#7ab3e0":"#8a9ab0" }}>{d}</div>
                     <div style={{ display:"flex",flexWrap:"wrap",gap:1,justifyContent:"center" }}>
                       {evs.slice(0,3).map((e,ei)=><div key={ei} style={{ width:5,height:5,borderRadius:"50%",background:e.color }}/>)}
-                      {evs.length>3&&<div style={{ fontSize:6,color:"#4e6a88" }}>+{evs.length-3}</div>}
+                      {evs.length>3&&<div style={{ fontSize:6,color:"var(--txt3)" }}>+{evs.length-3}</div>}
                     </div>
                   </div>
                 );
@@ -5007,14 +5227,14 @@ export default function App() {
                 <div className="card" style={{ border:"1px solid rgba(33,150,243,.15)" }}>
                   <div className="ch"><span className="ct">📋 {agendaDia.getDate()} {MESES_N2[agendaDia.getMonth()].slice(0,3)}</span>
                     <span style={{ cursor:"pointer", color:"#7ab3e0" }} onClick={()=>setAgendaDia(null)}>✕</span></div>
-                  {evs.length===0&&<div style={{ fontSize:9,color:"#3a5068",textAlign:"center",padding:12 }}>Sin actividades</div>}
+                  {evs.length===0&&<div style={{ fontSize:9,color:"var(--txt4)",textAlign:"center",padding:12 }}>Sin actividades</div>}
                   {evs.map((e,i)=>(
                     <div key={i} style={{ display:"flex",gap:8,padding:"6px 0",borderBottom:"1px solid rgba(255,255,255,.03)",alignItems:"center" }}>
                       <div style={{ width:3,height:32,borderRadius:2,background:e.color,flexShrink:0 }}/>
                       <div style={{ fontSize:14 }}>{e.icon}</div>
                       <div style={{ flex:1 }}>
                         <div style={{ fontSize:9.5,fontWeight:600 }}>{e.label}</div>
-                        <div style={{ fontSize:7.5,color:"#4e6a88" }}>{e.sub}</div>
+                        <div style={{ fontSize:7.5,color:"var(--txt3)" }}>{e.sub}</div>
                       </div>
                     </div>
                   ))}
@@ -5032,7 +5252,7 @@ export default function App() {
           <>
             <div className="st">🌍 Torneos Externos</div>
             {torneos.length === 0 && (
-              <div className="card"><p style={{ fontSize:9, color:"#4e6a88", textAlign:"center", padding:14 }}>Sin torneos registrados aún</p></div>
+              <div className="card"><p style={{ fontSize:9, color:"var(--txt3)", textAlign:"center", padding:14 }}>Sin torneos registrados aún</p></div>
             )}
             {[...torneos].reverse().map((t,i) => (
               <div key={t.id||i} className="card" style={{ marginBottom:8 }}>
@@ -5059,34 +5279,93 @@ export default function App() {
           <>
             <div className="st">🏃 Entrenamientos</div>
             {proxT.length===0 && pastT.length===0 && (
-              <div className="card"><p style={{ fontSize:9, color:"#4e6a88", textAlign:"center", padding:10 }}>Sin entrenamientos registrados</p></div>
+              <div className="card"><p style={{ fontSize:9, color:"var(--txt3)", textAlign:"center", padding:10 }}>Sin entrenamientos registrados</p></div>
             )}
             {proxT.length>0 && (
               <>
-                <div style={{ fontSize:8, color:"#3a5068", textTransform:"uppercase", letterSpacing:.5, marginBottom:5 }}>Próximos</div>
+                <div style={{ fontSize:8, color:"var(--txt4)", textTransform:"uppercase", letterSpacing:.5, marginBottom:5 }}>Próximos</div>
                 {proxT.map(t=>(
                   <div key={t.id} className="card" style={{ marginBottom:8, borderLeft:"3px solid rgba(33,150,243,.3)" }}>
                     <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:15, letterSpacing:.5, color:"var(--txt)", marginBottom:4 }}>{FechaLeg(t.fecha)}</div>
                     <div style={{ display:"flex", gap:10, fontSize:9.5, color:"#7ab3e0" }}>
                       <span>⏰ {t.hora}</span><span>📍 {t.lugar}</span>
                     </div>
-                    {t.tema && <div style={{ fontSize:8.5, color:"#4e6a88", marginTop:3 }}>📋 {t.tema}</div>}
-                    {t.notas && <div style={{ fontSize:8, color:"#4e6a88", marginTop:4, borderTop:"1px solid rgba(255,255,255,.04)", paddingTop:4 }}>📝 {t.notas}</div>}
+                    {t.tema && <div style={{ fontSize:8.5, color:"var(--txt3)", marginTop:3 }}>📋 {t.tema}</div>}
+                    {t.notas && <div style={{ fontSize:8, color:"var(--txt3)", marginTop:4, borderTop:"1px solid rgba(255,255,255,.04)", paddingTop:4 }}>📝 {t.notas}</div>}
                   </div>
                 ))}
               </>
             )}
-            {pastT.length>0 && (
-              <>
-                <div style={{ fontSize:8, color:"#3a5068", textTransform:"uppercase", letterSpacing:.5, margin:"10px 0 5px" }}>Historial reciente</div>
-                {pastT.map(t=>(
-                  <div key={t.id} className="card" style={{ marginBottom:6, opacity:.65 }}>
-                    <div style={{ fontSize:9, color:"#4e6a88" }}>{FechaLeg(t.fecha)} · ⏰ {t.hora} · 📍 {t.lugar}</div>
-                    {t.tema && <div style={{ fontSize:8, color:"#3a5068", marginTop:2 }}>📋 {t.tema}</div>}
-                  </div>
-                ))}
-              </>
-            )}
+            {pastT.length>0 && (() => {
+              // Calcular asistencia personal del jugador
+              const pid = activeChildId || user.playerId;
+              const attData = att[pid] || {};
+              const asistidos = pastT.filter(t => attData[t.id]?.present).length;
+              const pct = pastT.length ? Math.round(asistidos/pastT.length*100) : 0;
+              const pctCol = pct>=80?"#81c784":pct>=60?"#d4b84a":"#e8a0a0";
+              return (
+                <>
+                  {/* Estadística personal */}
+                  {pid && (
+                    <div className="card" style={{ marginBottom:8,
+                      background:"rgba(21,101,192,.06)", border:"1px solid rgba(33,150,243,.12)" }}>
+                      <div className="ch"><span className="ct">📊 Mi Asistencia</span></div>
+                      <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+                        <div style={{ textAlign:"center", flex:1 }}>
+                          <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:36,
+                            color:pctCol, lineHeight:1 }}>{pct}%</div>
+                          <div style={{ fontSize:8, color:"var(--txt3)", marginTop:2 }}>
+                            {asistidos}/{pastT.length} entrenamientos
+                          </div>
+                        </div>
+                        <div style={{ flex:2 }}>
+                          {/* Barra de progreso */}
+                          <div style={{ height:8, background:"rgba(255,255,255,.05)", borderRadius:4, overflow:"hidden", marginBottom:6 }}>
+                            <div style={{ height:"100%", width:pct+"%", background:pctCol,
+                              borderRadius:4, transition:"width .4s" }}/>
+                          </div>
+                          {/* Últimos 10 dots */}
+                          <div style={{ display:"flex", gap:3 }}>
+                            {pastT.slice(0,10).map(t => {
+                              const pres = attData[t.id]?.present;
+                              return (
+                                <div key={t.id} style={{ width:12, height:12, borderRadius:"50%",
+                                  background: pres?"#1565C0":"rgba(229,57,53,.3)",
+                                  border: `1px solid ${pres?"rgba(33,150,243,.5)":"rgba(229,57,53,.4)"}`,
+                                  flexShrink:0 }} title={FechaLeg(t.fecha)+(pres?" ✓":" ✗")}/>
+                              );
+                            })}
+                          </div>
+                          <div style={{ fontSize:7.5, color:"var(--txt4)", marginTop:4 }}>
+                            🔵 Presente · 🔴 Ausente (últimos {Math.min(10,pastT.length)})
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  <div style={{ fontSize:8, color:"var(--txt4)", textTransform:"uppercase", letterSpacing:.5, margin:"6px 0 5px" }}>Historial reciente</div>
+                  {pastT.map(t => {
+                    const pres = attData[t.id]?.present;
+                    return (
+                      <div key={t.id} className="card" style={{ marginBottom:6,
+                        borderLeft: pid ? `3px solid ${pres?"rgba(33,150,243,.4)":"rgba(229,57,53,.25)"}` : "none",
+                        opacity: pid ? 1 : .65 }}>
+                        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                          <div style={{ fontSize:9, color:"var(--txt3)" }}>
+                            {FechaLeg(t.fecha)} · ⏰ {t.hora} · 📍 {t.lugar}
+                          </div>
+                          {pid && <span style={{ fontSize:8.5, fontWeight:600,
+                            color:pres?"#81c784":"#e8a0a0" }}>
+                            {pres?"✓ Asistí":"✗ Ausente"}
+                          </span>}
+                        </div>
+                        {t.tema && <div style={{ fontSize:8, color:"var(--txt4)", marginTop:2 }}>📋 {t.tema}</div>}
+                      </div>
+                    );
+                  })}
+                </>
+              );
+            })()}
           </>
         );
       }
@@ -5108,7 +5387,7 @@ export default function App() {
               background:"var(--card)", borderRadius:10, border:"1px solid rgba(33,150,243,.08)",
               padding:"10px", marginBottom:10, display:"flex", flexDirection:"column", gap:8 }}>
               {filtMsgs.length === 0 && (
-                <div style={{ textAlign:"center", color:"#3a5068", fontSize:9, marginTop:40 }}>
+                <div style={{ textAlign:"center", color:"var(--txt4)", fontSize:9, marginTop:40 }}>
                   Sin mensajes aún en {activeChatCat}
                 </div>
               )}
@@ -5116,7 +5395,7 @@ export default function App() {
                 const esPropio = m.autor === user?.name;
                 return (
                   <div key={m.id} style={{ display:"flex", flexDirection:"column", alignItems: esPropio?"flex-end":"flex-start" }}>
-                    {!esPropio && <div style={{ fontSize:7.5, color:"#3a5068", marginBottom:2, paddingLeft:4 }}>{m.autor}</div>}
+                    {!esPropio && <div style={{ fontSize:7.5, color:"var(--txt4)", marginBottom:2, paddingLeft:4 }}>{m.autor}</div>}
                     <div style={{
                       background: esPropio ? "rgba(21,101,192,.25)" : "#090d1a",
                       border:`1px solid ${esPropio?"rgba(33,150,243,.3)":"rgba(255,255,255,.05)"}`,
@@ -5124,7 +5403,7 @@ export default function App() {
                       padding:"8px 11px", maxWidth:"85%"
                     }}>
                       <div style={{ fontSize:11, color:"#ccd8e8", lineHeight:1.5 }}>{m.texto}</div>
-                      <div style={{ fontSize:7, color:"#3a5068", marginTop:3 }}>{timeAgo(m.ts)}</div>
+                      <div style={{ fontSize:7, color:"var(--txt4)", marginTop:3 }}>{timeAgo(m.ts)}</div>
                     </div>
                   </div>
                 );
@@ -5274,14 +5553,14 @@ export default function App() {
                       onClick={() => markAllRead(misNotifs)}>
                       ✓ Marcar leídas
                     </button>
-                    <span style={{ cursor:"pointer", color:"#4e6a88", fontSize:16 }}
+                    <span style={{ cursor:"pointer", color:"var(--txt3)", fontSize:16 }}
                       onClick={() => setShowNotif(false)}>✕</span>
                   </div>
                 </div>
                 {/* Lista */}
                 <div style={{ overflowY:"auto", flex:1 }}>
                   {misNotifs.length === 0 && (
-                    <div style={{ padding:"20px 14px", textAlign:"center", fontSize:9, color:"#3a5068" }}>
+                    <div style={{ padding:"20px 14px", textAlign:"center", fontSize:9, color:"var(--txt4)" }}>
                       Sin notificaciones
                     </div>
                   )}
@@ -5307,7 +5586,7 @@ export default function App() {
                           <div style={{ fontSize:9.5, color: leida?"#4e6a88":"#c0cfe0", lineHeight:1.4 }}>
                             {n.txt}
                           </div>
-                          <div style={{ fontSize:7.5, color:"#3a5068", marginTop:3 }}>{ts}</div>
+                          <div style={{ fontSize:7.5, color:"var(--txt4)", marginTop:3 }}>{ts}</div>
                         </div>
                         {!leida && (
                           <div style={{ width:7, height:7, borderRadius:"50%",
@@ -5328,7 +5607,7 @@ export default function App() {
               <span style={{ fontSize:16 }}>🔄</span>
               <div style={{ flex:1 }}>
                 <div style={{ fontSize:9.5, fontWeight:600, color:"#7ab3e0" }}>Nueva versión disponible</div>
-                <div style={{ fontSize:7.5, color:"#4e6a88" }}>Toca para actualizar Rómulo F.C.</div>
+                <div style={{ fontSize:7.5, color:"var(--txt3)" }}>Toca para actualizar Rómulo F.C.</div>
               </div>
               <button onClick={() => { setSwUpdate(false); window.location.reload(); }}
                 style={{ background:"#1565C0", border:"none", borderRadius:8, color:"#fff",
@@ -5336,7 +5615,7 @@ export default function App() {
                 Actualizar ↑
               </button>
               <button onClick={() => setSwUpdate(false)}
-                style={{ background:"none", border:"none", color:"#4e6a88", fontSize:16,
+                style={{ background:"none", border:"none", color:"var(--txt3)", fontSize:16,
                   cursor:"pointer", padding:"0 4px" }}>✕</button>
             </div>
           )}
@@ -5370,6 +5649,7 @@ export default function App() {
     ["campeonatos","🏆","Campeonatos"],
     ["torneos","🌍","Torneos"],
     ["torneo-rapido","⚡","Torneo"],
+    ["galeria","📸","Galería"],
     ["uniformes","👕","Uniformes"],
     ["chat","💬","Chat"],
     ["stats","📊","Stats"],
@@ -5410,7 +5690,7 @@ export default function App() {
       return (
         <>
           <div className="st">🏟️ Panel Principal</div>
-          <p style={{ fontSize:9, color:"#4e6a88", marginBottom:10 }}>
+          <p style={{ fontSize:9, color:"var(--txt3)", marginBottom:10 }}>
             Bienvenido, <strong style={{ color:"#ccd8e8" }}>{user?.name}</strong> · {user?.role}
           </p>
 
@@ -5422,7 +5702,7 @@ export default function App() {
               <span style={{ fontSize:20 }}>🔔</span>
               <div style={{ flex:1 }}>
                 <div style={{ fontSize:10, fontWeight:600, color:"var(--txt)" }}>Activar notificaciones</div>
-                <div style={{ fontSize:8, color:"#4e6a88", marginTop:1 }}>Recibe alertas de partidos, pagos y avisos del club</div>
+                <div style={{ fontSize:8, color:"var(--txt3)", marginTop:1 }}>Recibe alertas de partidos, pagos y avisos del club</div>
               </div>
               <button className="btn-sm" style={{ background:"#1565C0", color:"#fff", flexShrink:0 }}
                 onClick={requestPushPermission}>Activar</button>
@@ -5479,6 +5759,62 @@ export default function App() {
               <div className="sl">Recaudado</div>
             </div>
           </div>
+
+          {/* ── Stats del equipo por categoría ── */}
+          {(() => {
+            const catStats = CATS.map(cat => {
+              const catMs = matches.filter(m => m.cat === cat && m.status === "finalizado"
+                && (user.cat === "Todas" || user.cat === cat));
+              if (catMs.length === 0) return null;
+              const v = catMs.filter(m => {
+                const esCasa = (m.home||"").includes("Rómulo");
+                return esCasa ? m.scoreH > m.scoreA : m.scoreA > m.scoreH;
+              }).length;
+              const e = catMs.filter(m => m.scoreH === m.scoreA).length;
+              const d = catMs.length - v - e;
+              const gf = catMs.reduce((s,m)=>{ const esCasa=(m.home||"").includes("Rómulo"); return s+(esCasa?m.scoreH:m.scoreA)||0; },0);
+              const gc = catMs.reduce((s,m)=>{ const esCasa=(m.home||"").includes("Rómulo"); return s+(esCasa?m.scoreA:m.scoreH)||0; },0);
+              // Racha: últimos 5 resultados
+              const racha = catMs.slice(-5).map(m => {
+                const esCasa=(m.home||"").includes("Rómulo");
+                const gRFC=esCasa?m.scoreH:m.scoreA, gRiv=esCasa?m.scoreA:m.scoreH;
+                return gRFC>gRiv?"V":gRFC<gRiv?"D":"E";
+              });
+              return { cat, pj:catMs.length, v, e, d, gf, gc, racha };
+            }).filter(Boolean).filter(x => user.cat==="Todas" || x.cat===user.cat);
+
+            if (catStats.length === 0) return null;
+            return (
+              <div className="card" style={{ marginBottom:8 }}>
+                <div className="ch"><span className="ct">📊 Rendimiento del Equipo</span></div>
+                {catStats.map(s => (
+                  <div key={s.cat} style={{ marginBottom:10, paddingBottom:10,
+                    borderBottom:"1px solid rgba(255,255,255,.04)" }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
+                      <span className="bg bg-b">{s.cat}</span>
+                      <div style={{ display:"flex", gap:4 }}>
+                        {s.racha.map((r,i) => (
+                          <span key={i} style={{ width:18, height:18, borderRadius:"50%", fontSize:8,
+                            fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center",
+                            background: r==="V"?"rgba(76,175,80,.2)":r==="D"?"rgba(229,57,53,.2)":"rgba(212,184,74,.15)",
+                            color: r==="V"?"#81c784":r==="D"?"#e8a0a0":"#d4b84a",
+                            border: `1px solid ${r==="V"?"rgba(76,175,80,.3)":r==="D"?"rgba(229,57,53,.25)":"rgba(212,184,74,.25)"}` }}>
+                            {r}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                    <div style={{ display:"flex", gap:6, fontSize:9 }}>
+                      <span style={{ color:"#81c784" }}>✓ {s.v}V</span>
+                      <span style={{ color:"#d4b84a" }}>= {s.e}E</span>
+                      <span style={{ color:"#e8a0a0" }}>✗ {s.d}D</span>
+                      <span style={{ color:"var(--txt3)", marginLeft:4 }}>GF:{s.gf} GC:{s.gc} DG:{s.gf-s.gc>0?"+":""}{s.gf-s.gc}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
 
           {/* ── Alerta pagos pendientes ── */}
           {pendMes > 0 && (
@@ -5573,7 +5909,7 @@ export default function App() {
                       <Avatar p={p} size={26}/>
                       <div style={{ flex:1 }}>
                         <div style={{ fontSize:9.5, fontWeight:600 }}>{p.nombre} {p.apellido}</div>
-                        <div style={{ fontSize:7.5, color:"#4e6a88" }}>{p.cat} · #{p.num}</div>
+                        <div style={{ fontSize:7.5, color:"var(--txt3)" }}>{p.cat} · #{p.num}</div>
                       </div>
                       <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:20, color:"#d4b84a" }}>{cnt}</div>
                     </div>
@@ -5611,7 +5947,7 @@ export default function App() {
                 );
               })}
               {deudores.length > 5 && (
-                <div style={{ fontSize:8, color:"#4e6a88", textAlign:"center", marginTop:6 }}>
+                <div style={{ fontSize:8, color:"var(--txt3)", textAlign:"center", marginTop:6 }}>
                   +{deudores.length-5} más — ver en Pagos
                 </div>
               )}
@@ -5635,7 +5971,7 @@ export default function App() {
                 </div>
               ))}
               {conNotas > 3 && (
-                <div style={{ fontSize:8, color:"#4e6a88", textAlign:"center", marginTop:6 }}>
+                <div style={{ fontSize:8, color:"var(--txt3)", textAlign:"center", marginTop:6 }}>
                   +{conNotas-3} más — ver en Jugadores
                 </div>
               )}
@@ -5657,7 +5993,7 @@ export default function App() {
                   <span style={{ width:6,height:6,borderRadius:"50%",background:"#2196F3",flexShrink:0,marginTop:5,display:"block" }}/>
                   <div>
                     <div style={{ fontSize:10.5 }}>{n.txt}</div>
-                    <div style={{ fontSize:8, color:"#4e6a88", marginTop:1 }}>{timeAgo(n.ts)}</div>
+                    <div style={{ fontSize:8, color:"var(--txt3)", marginTop:1 }}>{timeAgo(n.ts)}</div>
                   </div>
                 </div>
               ))}
@@ -5721,7 +6057,7 @@ export default function App() {
                 ))}
                 {prox7.length > 0 && (
                   <>
-                    <div style={{ fontSize:8, color:"#3a5068", margin:"6px 0 4px", textTransform:"uppercase", letterSpacing:.5 }}>Próximos 7 días</div>
+                    <div style={{ fontSize:8, color:"var(--txt4)", margin:"6px 0 4px", textTransform:"uppercase", letterSpacing:.5 }}>Próximos 7 días</div>
                     {prox7.map(p => {
                       const d=new Date(p.dob);
                       const bd=new Date(hoy.getFullYear(),d.getMonth(),d.getDate());
@@ -5837,7 +6173,7 @@ export default function App() {
             </div>
             {/* Cabecera días */}
             <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:2, marginBottom:4 }}>
-              {DIAS_S.map(d=><div key={d} style={{ textAlign:"center", fontSize:7.5, color:"#3a5068", fontWeight:600, padding:"3px 0" }}>{d}</div>)}
+              {DIAS_S.map(d=><div key={d} style={{ textAlign:"center", fontSize:7.5, color:"var(--txt4)", fontWeight:600, padding:"3px 0" }}>{d}</div>)}
             </div>
             {/* Cuadrícula */}
             <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:2 }}>
@@ -5858,7 +6194,7 @@ export default function App() {
                       {evs.slice(0,3).map((e,ei)=>(
                         <div key={ei} style={{ width:5, height:5, borderRadius:"50%", background:e.color }}/>
                       ))}
-                      {evs.length>3 && <div style={{ fontSize:6, color:"#4e6a88" }}>+{evs.length-3}</div>}
+                      {evs.length>3 && <div style={{ fontSize:6, color:"var(--txt3)" }}>+{evs.length-3}</div>}
                     </div>
                   </div>
                 );
@@ -5896,7 +6232,7 @@ export default function App() {
                       background: selec?"rgba(21,101,192,.25)":esHoy?"rgba(21,101,192,.1)":"rgba(255,255,255,.02)",
                       border:`1px solid ${selec?"rgba(33,150,243,.5)":esHoy?"rgba(33,150,243,.3)":"rgba(255,255,255,.03)"}`,
                       cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"center", gap:3 }}>
-                    <div style={{ fontSize:7.5, color:"#3a5068", fontWeight:600 }}>{DIAS_S[date.getDay()]}</div>
+                    <div style={{ fontSize:7.5, color:"var(--txt4)", fontWeight:600 }}>{DIAS_S[date.getDay()]}</div>
                     <div style={{ fontSize:11, fontWeight:700, color:esHoy?"#7ab3e0":"#8a9ab0" }}>{date.getDate()}</div>
                     <div style={{ display:"flex", flexDirection:"column", gap:2, width:"100%" }}>
                       {evs.slice(0,3).map((e,ei)=>(
@@ -5906,7 +6242,7 @@ export default function App() {
                           {e.icon} {e.label}
                         </div>
                       ))}
-                      {evs.length>3 && <div style={{ fontSize:6, color:"#4e6a88", textAlign:"center" }}>+{evs.length-3} más</div>}
+                      {evs.length>3 && <div style={{ fontSize:6, color:"var(--txt3)", textAlign:"center" }}>+{evs.length-3} más</div>}
                     </div>
                   </div>
                 );
@@ -5928,7 +6264,7 @@ export default function App() {
               <span className="mx" style={{ cursor:"pointer" }} onClick={()=>setAgendaDia(null)}>✕</span>
             </div>
             {evs.length===0 && (
-              <div style={{ fontSize:9, color:"#3a5068", textAlign:"center", padding:"12px 0" }}>Sin actividades este día</div>
+              <div style={{ fontSize:9, color:"var(--txt4)", textAlign:"center", padding:"12px 0" }}>Sin actividades este día</div>
             )}
             {evs.map((e,i) => (
               <div key={i} style={{ display:"flex", gap:8, padding:"7px 0",
@@ -5937,7 +6273,7 @@ export default function App() {
                 <div style={{ fontSize:16 }}>{e.icon}</div>
                 <div style={{ flex:1 }}>
                   <div style={{ fontSize:10, fontWeight:600 }}>{e.label}</div>
-                  <div style={{ fontSize:8, color:"#4e6a88", marginTop:1 }}>{e.sub}</div>
+                  <div style={{ fontSize:8, color:"var(--txt3)", marginTop:1 }}>{e.sub}</div>
                 </div>
                 <span className="bg" style={{ fontSize:7, background:e.color+"22", color:e.color, border:`1px solid ${e.color}44` }}>
                   {e.tipo==="partido"?"Partido":e.tipo==="entreno"?"Entreno":e.tipo==="torneo"?"Torneo":"🎂 Cumple"}
@@ -5965,7 +6301,7 @@ export default function App() {
           {/* Leyenda */}
           <div style={{ display:"flex", gap:8, marginBottom:10, flexWrap:"wrap" }}>
             {[["⚽","#2196F3","Partidos"],["🏃","#1976D2","Entrenos"],["🌍","#d4b84a","Torneos"],["🎂","#E53935","Cumpleaños"]].map(([ic,col,lb])=>(
-              <div key={lb} style={{ display:"flex", alignItems:"center", gap:3, fontSize:7.5, color:"#4e6a88" }}>
+              <div key={lb} style={{ display:"flex", alignItems:"center", gap:3, fontSize:7.5, color:"var(--txt3)" }}>
                 <div style={{ width:6, height:6, borderRadius:"50%", background:col }}/>{lb}
               </div>
             ))}
@@ -5997,7 +6333,7 @@ export default function App() {
           {/* Tabla de años por categoría */}
           <div style={{ background:"rgba(21,101,192,.06)", border:"1px solid rgba(33,150,243,.1)",
             borderRadius:10, padding:"8px 10px", marginBottom:8 }}>
-            <div style={{ fontSize:7.5, color:"#3a5068", textTransform:"uppercase", letterSpacing:.5, marginBottom:6 }}>
+            <div style={{ fontSize:7.5, color:"var(--txt4)", textTransform:"uppercase", letterSpacing:.5, marginBottom:6 }}>
               📅 Años por categoría ({new Date().getFullYear()})
             </div>
             <div style={{ display:"flex", flexWrap:"wrap", gap:4 }}>
@@ -6007,7 +6343,7 @@ export default function App() {
                   <div key={cat} style={{ background:"rgba(21,101,192,.1)", borderRadius:6,
                     padding:"4px 8px", border:"1px solid rgba(33,150,243,.15)" }}>
                     <span style={{ fontSize:8, fontWeight:700, color:"#7ab3e0" }}>{cat}</span>
-                    <span style={{ fontSize:7.5, color:"#4e6a88", marginLeft:4 }}>{min}–{max}</span>
+                    <span style={{ fontSize:7.5, color:"var(--txt3)", marginLeft:4 }}>{min}–{max}</span>
                   </div>
                 );
               })}
@@ -6184,7 +6520,7 @@ export default function App() {
                       {y && " 🟨"}{r && " 🟥"}
                       {/* Badge año y categoría sugerida */}
                       {anoNac && (
-                        <span style={{ fontSize:7, marginLeft:5, color:"#4e6a88" }}>{anoNac}</span>
+                        <span style={{ fontSize:7, marginLeft:5, color:"var(--txt3)" }}>{anoNac}</span>
                       )}
                       {catSugerida && catSugerida !== p.cat && (
                         <span style={{ fontSize:7, marginLeft:3, color:"#E53935", background:"rgba(229,57,53,.1)",
@@ -6254,7 +6590,7 @@ export default function App() {
                       return (
                         <div style={{ marginTop:8, background:"var(--card)", borderRadius:8, padding:"7px 9px",
                           border:"1px solid rgba(33,150,243,.07)" }}>
-                          <div style={{ fontSize:8, color:"#3a5068", textTransform:"uppercase", letterSpacing:.5, marginBottom:5 }}>
+                          <div style={{ fontSize:8, color:"var(--txt4)", textTransform:"uppercase", letterSpacing:.5, marginBottom:5 }}>
                             ⚽ Últimos 5 partidos
                           </div>
                           {pMatches.map(m => {
@@ -6275,7 +6611,7 @@ export default function App() {
                                   color:resCol, width:14, flexShrink:0 }}>{res}</span>
                                 <div style={{ flex:1, fontSize:8.5 }}>
                                   {m.home} {m.scoreH}–{m.scoreA} {m.away}
-                                  <span style={{ fontSize:7.5, color:"#4e6a88" }}> · {m.date}</span>
+                                  <span style={{ fontSize:7.5, color:"var(--txt3)" }}> · {m.date}</span>
                                 </div>
                                 <div style={{ display:"flex", gap:3 }}>
                                   {esMvp && <span className="bg bg-y" style={{ fontSize:6.5 }}>🏅</span>}
@@ -6353,7 +6689,7 @@ export default function App() {
                   </div>
                 </div>
                 <div className="inp-wrap">
-                  <div className="inp-lbl">⚽ Equipo de referencia <span style={{ color:"#3a5068", fontWeight:400 }}>(opcional)</span></div>
+                  <div className="inp-lbl">⚽ Equipo de referencia <span style={{ color:"var(--txt4)", fontWeight:400 }}>(opcional)</span></div>
                   <input className="inp" placeholder="Ej: 17A, 17B — dejar vacío si no aplica"
                     value={np.subequipo||""}
                     onChange={e => setNp(n => ({ ...n, subequipo:e.target.value }))} />
@@ -6414,7 +6750,7 @@ export default function App() {
                 </div>
                 <div className="div" />
                 <div className="fsec">⭐ Evaluación Técnica</div>
-                <div style={{ fontSize:8, color:"#4e6a88", marginBottom:8 }}>Califica del 1 al 10 cada aspecto. Solo visible para entrenadores.</div>
+                <div style={{ fontSize:8, color:"var(--txt3)", marginBottom:8 }}>Califica del 1 al 10 cada aspecto. Solo visible para entrenadores.</div>
                 {[
                   ["eval_velocidad",   "⚡ Velocidad"],
                   ["eval_tecnica",     "🎯 Técnica"],
@@ -6434,7 +6770,7 @@ export default function App() {
                       value={np[key] || 5}
                       onChange={e => setNp(n => ({ ...n, [key]: parseInt(e.target.value) }))}
                       style={{ width:"100%", accentColor:"#1565C0", cursor:"pointer" }} />
-                    <div style={{ display:"flex", justifyContent:"space-between", fontSize:7, color:"#3a5068", marginTop:1 }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", fontSize:7, color:"var(--txt4)", marginTop:1 }}>
                       <span>1 Bajo</span><span>5 Regular</span><span>10 Excelente</span>
                     </div>
                   </div>
@@ -6453,8 +6789,8 @@ export default function App() {
                         border:"1px solid rgba(229,57,53,.1)" }}>
                         <div>
                           <div style={{ fontSize:10, color:"#e8a0a0" }}>🩹 {l.tipo}</div>
-                          <div style={{ fontSize:8, color:"#4e6a88" }}>{l.fecha} · {l.recuperacion}</div>
-                          {l.notas && <div style={{ fontSize:7.5, color:"#3a5068", marginTop:1 }}>{l.notas}</div>}
+                          <div style={{ fontSize:8, color:"var(--txt3)" }}>{l.fecha} · {l.recuperacion}</div>
+                          {l.notas && <div style={{ fontSize:7.5, color:"var(--txt4)", marginTop:1 }}>{l.notas}</div>}
                         </div>
                         <button className="btn-sm" style={{ color:"#e8a0a0", borderColor:"rgba(229,57,53,.15)" }}
                           onClick={() => setNp(n => ({ ...n, lesiones: (n.lesiones||[]).filter((_,j)=>j!==i) }))}>✕</button>
@@ -6511,7 +6847,7 @@ export default function App() {
                 {/* ── Descargar plantilla ── */}
                 <div style={{ background:"rgba(212,184,74,.06)", border:"1px solid rgba(212,184,74,.2)", borderRadius:9, padding:"10px", marginBottom:10 }}>
                   <div style={{ fontSize:9, color:"#d4b84a", fontWeight:600, marginBottom:4 }}>📄 Paso 1 — Descarga la plantilla</div>
-                  <div style={{ fontSize:8, color:"#4e6a88", lineHeight:1.6, marginBottom:8 }}>
+                  <div style={{ fontSize:8, color:"var(--txt3)", lineHeight:1.6, marginBottom:8 }}>
                     Descarga el archivo de ejemplo, llénalo con los datos de tus jugadores y luego impórtalo. <strong style={{ color:"var(--txt)" }}>No cambies los nombres de las columnas.</strong>
                   </div>
                   <button className="btn-sm" style={{ width:"100%", padding:9, fontSize:10, color:"#d4b84a", borderColor:"rgba(212,184,74,.3)", background:"rgba(212,184,74,.08)" }}
@@ -6535,7 +6871,7 @@ export default function App() {
                 </div>
 
                 {/* ── Columnas requeridas ── */}
-                <div style={{ fontSize:8, color:"#4e6a88", lineHeight:1.7, marginBottom:10, padding:"8px", background:"var(--inp)", borderRadius:7 }}>
+                <div style={{ fontSize:8, color:"var(--txt3)", lineHeight:1.7, marginBottom:10, padding:"8px", background:"var(--inp)", borderRadius:7 }}>
                   <div style={{ color:"#7ab3e0", fontWeight:600, marginBottom:4 }}>📋 Paso 2 — Llena el archivo</div>
                   <div style={{ fontFamily:"monospace", fontSize:7.5, color:"#5a7a94" }}>
                     • <strong style={{ color:"var(--txt)" }}>nombre, apellido, cedula</strong> — obligatorios<br/>
@@ -6620,7 +6956,7 @@ export default function App() {
             <div className="card" style={{ marginBottom:8 }}>
               <div className="ch"><span className="ct">Seleccionar Sesión</span></div>
               {myTrains.length === 0 && (
-                <p style={{ fontSize:9, color:"#4e6a88", textAlign:"center", padding:10 }}>
+                <p style={{ fontSize:9, color:"var(--txt3)", textAlign:"center", padding:10 }}>
                   No hay entrenamientos. Agrégalos en el módulo Entrenos.
                 </p>
               )}
@@ -6641,7 +6977,7 @@ export default function App() {
                     <div>
                       <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:17, letterSpacing:.5,
                         color: esPasado ? "#4e6a88" : "#7ab3e0" }}>{fechaLeg}</div>
-                      <div style={{ fontSize:8, color:"#4e6a88", marginTop:1 }}>
+                      <div style={{ fontSize:8, color:"var(--txt3)", marginTop:1 }}>
                         ⏰ {t.hora} · 📍 {t.lugar}
                         {t.tema && <span> · {t.tema}</span>}
                       </div>
@@ -6673,15 +7009,15 @@ export default function App() {
                       <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:18, color:"#7ab3e0", letterSpacing:.5 }}>
                         {fechaLeg}
                       </div>
-                      <div style={{ fontSize:8.5, color:"#4e6a88", marginTop:2 }}>
+                      <div style={{ fontSize:8.5, color:"var(--txt3)", marginTop:2 }}>
                         ⏰ {selTrain.hora} · 📍 {selTrain.lugar}
                       </div>
-                      {selTrain.tema && <div style={{ fontSize:8, color:"#4e6a88", marginTop:1 }}>📋 {selTrain.tema}</div>}
+                      {selTrain.tema && <div style={{ fontSize:8, color:"var(--txt3)", marginTop:1 }}>📋 {selTrain.tema}</div>}
                     </div>
                     <div style={{ textAlign:"right" }}>
                       <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:28,
                         color: sesPct>=70?"#7ab3e0":"#e8a0a0" }}>{sesCount}/{trainPlayers.length}</div>
-                      <div style={{ fontSize:7.5, color:"#4e6a88" }}>{sesPct}% presentes</div>
+                      <div style={{ fontSize:7.5, color:"var(--txt3)" }}>{sesPct}% presentes</div>
                     </div>
                   </div>
                   <div className="pb" style={{ marginTop:8 }}>
@@ -6706,11 +7042,16 @@ export default function App() {
                   </div>
                 </div>
 
+                {/* Búsqueda rápida */}
+                <input className="inp" placeholder="🔍 Buscar jugador..." value={attSearch}
+                  onChange={e=>setAttSearch(e.target.value)}
+                  style={{ marginBottom:8 }}/>
+
                 {/* Lista compacta de pase de lista rápida */}
                 {trainPlayers.length === 0 && (
-                  <div className="card"><p style={{ fontSize:9, color:"#4e6a88", textAlign:"center", padding:10 }}>Sin jugadores en esta categoría</p></div>
+                  <div className="card"><p style={{ fontSize:9, color:"var(--txt3)", textAlign:"center", padding:10 }}>Sin jugadores en esta categoría</p></div>
                 )}
-                {trainPlayers.map(p => {
+                {trainPlayers.filter(p => !attSearch || (p.nombre+" "+p.apellido).toLowerCase().includes(attSearch.toLowerCase())).map(p => {
                   const present = !!(att[p.id]?.[attSession]?.present);
                   return (
                     <div key={p.id}
@@ -6733,7 +7074,7 @@ export default function App() {
                         <div style={{ fontSize:12, fontWeight:600, color: present?"#7ab3e0":"#c0cfe0" }}>
                           {p.nombre} {p.apellido}
                         </div>
-                        <div style={{ fontSize:8, color:"#4e6a88" }}>#{p.num} · {p.cat}</div>
+                        <div style={{ fontSize:8, color:"var(--txt3)" }}>#{p.num} · {p.cat}</div>
                       </div>
                       {/* Badge estado */}
                       <span className={"bg "+(present?"bg-b":"bg-n")} style={{ fontSize:8, flexShrink:0 }}>
@@ -6873,7 +7214,7 @@ export default function App() {
                     <Avatar p={p} size={24} />
                     <div>
                       <div style={{ fontSize:11, fontWeight:600 }}>{p.nombre} {p.apellido}</div>
-                      <div style={{ fontSize:8, color:"#4e6a88" }}>{p.cat}</div>
+                      <div style={{ fontSize:8, color:"var(--txt3)" }}>{p.cat}</div>
                     </div>
                   </div>
                   <div style={{ display:"flex", gap:4, alignItems:"center" }}>
@@ -6895,7 +7236,7 @@ export default function App() {
                     if (!esActivo && !ok && !exento) return (
                       <div key={m} style={{ background:"rgba(255,255,255,.02)", borderRadius:6,
                         padding:"5px 3px", textAlign:"center", opacity:.35, border:"1px solid rgba(255,255,255,.03)" }}>
-                        <div style={{ fontSize:7.5, color:"#3a5068" }}>{m}</div>
+                        <div style={{ fontSize:7.5, color:"var(--txt4)" }}>{m}</div>
                         <div style={{ fontSize:9 }}>—</div>
                       </div>
                     );
@@ -6935,10 +7276,10 @@ export default function App() {
                 </div>
                 {pay[p.id] && (pay[p.id].history||[]).slice(-3).reverse().map((h,i) => (
                   <div key={i} className="hist-row">
-                    <span style={{ color:"#4e6a88" }}>{h.action} {h.item||""}
+                    <span style={{ color:"var(--txt3)" }}>{h.action} {h.item||""}
                       {h.ref ? <span style={{ color:"#7ab3e0" }}> · Ref: {h.ref}</span> : ""}
                     </span>
-                    <span style={{ color:"#4e6a88" }}>{h.monto ? "Bs. "+h.monto+" · " : ""}{h.date}</span>
+                    <span style={{ color:"var(--txt3)" }}>{h.monto ? "Bs. "+h.monto+" · " : ""}{h.date}</span>
                   </div>
                 ))}
               </div>
@@ -6952,7 +7293,7 @@ export default function App() {
             );
             if (visibleChamps.length === 0) return (
               <div className="card">
-                <p style={{ fontSize:9, color:"#4e6a88", textAlign:"center", padding:"12px 0" }}>
+                <p style={{ fontSize:9, color:"var(--txt3)", textAlign:"center", padding:"12px 0" }}>
                   No hay campeonatos activos para esta categoría.
                 </p>
               </div>
@@ -7006,12 +7347,12 @@ export default function App() {
             <>
               <div className="card" style={{ marginBottom:8 }}>
                 <div className="ch"><span className="ct">Pagos de Arbitraje</span></div>
-                <p style={{ fontSize:8.5, color:"#4e6a88", lineHeight:1.6, marginBottom:6 }}>
+                <p style={{ fontSize:8.5, color:"var(--txt3)", lineHeight:1.6, marginBottom:6 }}>
                   Los pagos se registran automáticamente desde el módulo <strong style={{ color:"var(--txt)" }}>En Vivo</strong> al finalizar cada partido.
                 </p>
                 <div style={{ display:"flex", alignItems:"center", gap:6, background:"rgba(33,150,243,.04)", borderRadius:7, padding:"7px 9px" }}>
                   <span style={{ fontSize:14 }}>🏁</span>
-                  <span style={{ fontSize:9, color:"#4e6a88", lineHeight:1.5 }}>
+                  <span style={{ fontSize:9, color:"var(--txt3)", lineHeight:1.5 }}>
                     Al cerrar un partido en vivo, el sistema te pedirá confirmar si el arbitraje fue pagado y el monto.
                   </span>
                 </div>
@@ -7028,7 +7369,7 @@ export default function App() {
                         <Avatar p={p} size={24} />
                         <div>
                           <div style={{ fontSize:11, fontWeight:600 }}>{p.nombre} {p.apellido}</div>
-                          <div style={{ fontSize:8, color:"#4e6a88" }}>{p.cat}</div>
+                          <div style={{ fontSize:8, color:"var(--txt3)" }}>{p.cat}</div>
                         </div>
                       </div>
                       <div style={{ display:"flex", gap:4 }}>
@@ -7041,7 +7382,7 @@ export default function App() {
                         padding:"5px 0", borderBottom:"1px solid rgba(255,255,255,.02)", fontSize:9 }}>
                         <div>
                           <div style={{ fontWeight:500 }}>vs {a.rival || "Rival"} · {a.date}</div>
-                          <div style={{ fontSize:8, color:"#4e6a88", marginTop:1 }}>Bs. {a.amount || 0}</div>
+                          <div style={{ fontSize:8, color:"var(--txt3)", marginTop:1 }}>Bs. {a.amount || 0}</div>
                         </div>
                         <span className={"bg " + (a.paid ? "bg-b" : "bg-r")}>
                           {a.paid ? "✅ Pagado" : "❌ Pendiente"}
@@ -7053,7 +7394,7 @@ export default function App() {
               })}
               {filtP.every(p => !(pay[p.id]?.arbitraje?.length)) && (
                 <div className="card">
-                  <p style={{ fontSize:9, color:"#4e6a88", textAlign:"center", padding:"10px 0" }}>
+                  <p style={{ fontSize:9, color:"var(--txt3)", textAlign:"center", padding:"10px 0" }}>
                     Aún no hay registros de arbitraje. Se generan al finalizar partidos en vivo.
                   </p>
                 </div>
@@ -7139,7 +7480,7 @@ export default function App() {
                         background: esHoy?"rgba(21,101,192,.12)":"rgba(255,255,255,.02)",
                         border:`1px solid ${esHoy?"rgba(33,150,243,.3)":"rgba(255,255,255,.04)"}`,
                         display:"flex", flexDirection:"column", alignItems:"center", gap:2 }}>
-                        <div style={{ fontSize:7, color:"#3a5068", fontWeight:600 }}>{DIAS_S[date.getDay()]}</div>
+                        <div style={{ fontSize:7, color:"var(--txt4)", fontWeight:600 }}>{DIAS_S[date.getDay()]}</div>
                         <div style={{ fontSize:11, fontWeight:700, color:esHoy?"#7ab3e0":"#8a9ab0" }}>{date.getDate()}</div>
                         {partsDia.map((m,mi)=>(
                           <div key={mi} style={{ borderRadius:3, padding:"1px 3px", width:"90%",
@@ -7185,11 +7526,12 @@ export default function App() {
               {matchDetail?.id === m.id && m.status === "finalizado" && (() => {
                 const attM    = attMatches.find(a => String(a.matchId)===String(m.id));
                 const ps      = m.playerStats || {};
-                // Convocados: att_matches → playerStats → todos de la cat
+                // Convocados: att_matches si existe → playerStats si existe → vacío
                 const convIds = attM?.convocados?.length > 0
                   ? attM.convocados.map(String)
-                  : Object.keys(ps).length > 0 ? Object.keys(ps).map(String)
-                  : players.filter(p=>p.cat===m.cat).map(p=>String(p.id));
+                  : Object.keys(ps).length > 0
+                    ? Object.keys(ps).map(String)
+                    : [];
                 const convPls = convIds.map(id=>players.find(p=>String(p.id)===id)).filter(Boolean);
                 const mvpPl   = m.mvp?.playerId ? players.find(x=>String(x.id)===String(m.mvp.playerId)) : null;
                 // Stats globales del partido
@@ -7256,6 +7598,14 @@ export default function App() {
                         Sin convocados registrados
                       </div>
                     )}
+                  {/* Botón editar convocados — para corregir partidos mal registrados */}
+                  {can("partido") && (
+                    <button className="btn-sm" style={{ width:"100%", marginTop:8, fontSize:8.5,
+                      background:"rgba(212,184,74,.08)", borderColor:"rgba(212,184,74,.2)", color:"#d4b84a" }}
+                      onClick={e=>{ e.stopPropagation(); setEditConvModal(m); setMatchDetail(null); }}>
+                      ✏️ Editar quiénes jugaron
+                    </button>
+                  )}
                   </div>
                 );
               })()}
@@ -7391,7 +7741,7 @@ export default function App() {
                           <option value="Final">🥇 Final</option>
                         </select>
                       </>
-                    : <div style={{ fontSize:8, color:"#3a5068", padding:"5px 0" }}>⚽ Partido amistoso — selecciona un campeonato para definir la fase</div>
+                    : <div style={{ fontSize:8, color:"var(--txt4)", padding:"5px 0" }}>⚽ Partido amistoso — selecciona un campeonato para definir la fase</div>
                   }
                 </div>
                 <button className="btn" style={{ marginTop:4 }} onClick={saveMatch}>{editMid ? "💾 GUARDAR CAMBIOS" : "GUARDAR PARTIDO"}</button>
@@ -7431,7 +7781,7 @@ export default function App() {
           )}
 
           {torneos.length === 0 && (
-            <div className="card"><p style={{ fontSize:9, color:"#4e6a88", textAlign:"center", padding:14 }}>Sin torneos registrados</p></div>
+            <div className="card"><p style={{ fontSize:9, color:"var(--txt3)", textAlign:"center", padding:14 }}>Sin torneos registrados</p></div>
           )}
 
           {[...torneos].reverse().map((t,ri) => {
@@ -7529,6 +7879,98 @@ export default function App() {
       );
     }
 
+    if (tab === "galeria") {
+      // Recopilar todas las fotos de partidos
+      const fotosPartidos = matches.filter(m=>m.fotos?.length>0).flatMap(m=>
+        (m.fotos||[]).map(f=>({ src:f, caption:m.home+" vs "+m.away+" · "+m.date, cat:m.cat }))
+      );
+      // Fotos generales del club (guardadas en config)
+      const todasFotos = [...fotosPartidos];
+
+      function subirFotoClub() {
+        const input = document.createElement("input");
+        input.type = "file"; input.accept = "image/*"; input.multiple = true;
+        input.onchange = async e => {
+          const files = Array.from(e.target.files);
+          for (const file of files) {
+            const reader = new FileReader();
+            reader.onload = ev => {
+              setGaleriaClub(prev => [{
+                src: ev.target.result,
+                caption: "Foto del club · " + new Date().toLocaleDateString("es"),
+                cat: "Club"
+              }, ...prev]);
+            };
+            reader.readAsDataURL(file);
+          }
+        };
+        input.click();
+      }
+
+      const todas = [...galeriaClub, ...todasFotos];
+
+      return (
+        <>
+          <div className="st">📸 Galería Rómulo FC</div>
+          {can("config") && (
+            <button className="btn" style={{ width:"100%", marginBottom:10 }}
+              onClick={subirFotoClub}>
+              + Agregar Fotos
+            </button>
+          )}
+
+          {todas.length === 0 && (
+            <div className="card" style={{ textAlign:"center", padding:"30px 0" }}>
+              <div style={{ fontSize:32, marginBottom:8 }}>📷</div>
+              <div style={{ fontSize:9, color:"var(--txt3)" }}>
+                Sin fotos todavía. Las fotos de partidos aparecerán aquí automáticamente.
+              </div>
+            </div>
+          )}
+
+          {/* Grid de fotos */}
+          {todas.length > 0 && (
+            <>
+              {/* Filtro por categoría */}
+              {["Todas",...CATS,"Club"].filter(cat =>
+                cat==="Todas" || todas.some(f=>f.cat===cat)
+              ).length > 2 && (
+                <div style={{ display:"flex", gap:5, overflowX:"auto", marginBottom:10,
+                  paddingBottom:4, scrollbarWidth:"none" }}>
+                  {["Todas",...CATS,"Club"].filter(cat =>
+                    cat==="Todas" || todas.some(f=>f.cat===cat)
+                  ).map(cat => (
+                    <button key={cat} className="btn-sm" style={{ flexShrink:0, fontSize:8,
+                      background: catF===cat||(!catF&&cat==="Todas")?"rgba(33,150,243,.2)":"rgba(255,255,255,.03)",
+                      color: catF===cat||(!catF&&cat==="Todas")?"#7ab3e0":"var(--txt3)",
+                      borderColor: catF===cat||(!catF&&cat==="Todas")?"rgba(33,150,243,.4)":"rgba(255,255,255,.05)" }}
+                      onClick={()=>setCatF(cat==="Todas"?"Todas":cat)}>
+                      {cat}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6 }}>
+                {todas.filter(f=>catF==="Todas"||f.cat===catF).map((f,i)=>(
+                  <div key={i} style={{ borderRadius:10, overflow:"hidden", position:"relative",
+                    border:"1px solid rgba(33,150,243,.1)" }}>
+                    <img src={f.src} alt={f.caption} style={{ width:"100%", aspectRatio:"1",
+                      objectFit:"cover", display:"block" }}/>
+                    <div style={{ position:"absolute", bottom:0, left:0, right:0,
+                      background:"linear-gradient(transparent,rgba(4,6,12,.8))",
+                      padding:"16px 6px 5px", fontSize:7.5, color:"rgba(255,255,255,.7)",
+                      lineHeight:1.3 }}>
+                      {f.caption}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </>
+      );
+    }
+
     if (tab === "uniformes") {
       const myP = players.filter(p => user.cat === "Todas" || p.cat === user.cat);
 
@@ -7578,7 +8020,7 @@ export default function App() {
                     <Avatar p={p} size={30} />
                     <div>
                       <div style={{ fontSize:11, fontWeight:600 }}>{p.nombre} {p.apellido}</div>
-                      <div style={{ fontSize:8, color:"#3a5068" }}>{p.cat} · #{p.num}</div>
+                      <div style={{ fontSize:8, color:"var(--txt4)" }}>{p.cat} · #{p.num}</div>
                     </div>
                   </div>
                   <div style={{ display:"flex", gap:5, alignItems:"center" }}>
@@ -7635,7 +8077,7 @@ export default function App() {
                     {u.entregado ? "↩ Marcar pendiente" : "✅ Marcar entregado"}
                   </button>
                   {u.entregado && u.fechaEntrega && (
-                    <span style={{ fontSize:7.5, color:"#3a5068" }}>📅 {u.fechaEntrega}</span>
+                    <span style={{ fontSize:7.5, color:"var(--txt4)" }}>📅 {u.fechaEntrega}</span>
                   )}
                 </div>
 
@@ -7696,7 +8138,7 @@ export default function App() {
             background:"var(--card)", borderRadius:10, border:"1px solid rgba(33,150,243,.08)",
             padding:"10px", marginBottom:10, display:"flex", flexDirection:"column", gap:8 }}>
             {filtMsgs.length === 0 && (
-              <div style={{ textAlign:"center", color:"#3a5068", fontSize:9, marginTop:40 }}>
+              <div style={{ textAlign:"center", color:"var(--txt4)", fontSize:9, marginTop:40 }}>
                 No hay mensajes en {chatCat} aún.<br/>¡Sé el primero en escribir!
               </div>
             )}
@@ -7706,8 +8148,8 @@ export default function App() {
                 <div key={m.id} style={{ display:"flex", flexDirection:"column",
                   alignItems: esPropio ? "flex-end" : "flex-start" }}>
                   {!esPropio && (
-                    <div style={{ fontSize:7.5, color:"#3a5068", marginBottom:2, paddingLeft:4 }}>
-                      {m.autor} · <span style={{ color:"#4e6a88" }}>{m.rol}</span>
+                    <div style={{ fontSize:7.5, color:"var(--txt4)", marginBottom:2, paddingLeft:4 }}>
+                      {m.autor} · <span style={{ color:"var(--txt3)" }}>{m.rol}</span>
                     </div>
                   )}
                   <div style={{
@@ -7717,7 +8159,7 @@ export default function App() {
                     padding:"8px 11px", maxWidth:"85%"
                   }}>
                     <div style={{ fontSize:11, color:"#ccd8e8", lineHeight:1.5 }}>{m.texto}</div>
-                    <div style={{ fontSize:7, color:"#3a5068", marginTop:3, textAlign: esPropio?"left":"right" }}>
+                    <div style={{ fontSize:7, color:"var(--txt4)", marginTop:3, textAlign: esPropio?"left":"right" }}>
                       {timeAgo(m.ts)}
                     </div>
                   </div>
@@ -7739,7 +8181,7 @@ export default function App() {
             <button className="btn" style={{ width:44, height:44, padding:0, borderRadius:10, fontSize:18, flexShrink:0 }}
               onClick={sendChatMsg}>➤</button>
           </div>
-          <div style={{ fontSize:7.5, color:"#3a5068", marginTop:4 }}>Enter para enviar · Shift+Enter para nueva línea</div>
+          <div style={{ fontSize:7.5, color:"var(--txt4)", marginTop:4 }}>Enter para enviar · Shift+Enter para nueva línea</div>
         </>
       );
     }
@@ -7828,7 +8270,7 @@ export default function App() {
                 .map(p => ({ ...p, mvpCount: matches.filter(m=>m.mvp?.playerId===p.id).length }))
                 .filter(p=>p.mvpCount>0).sort((a,b)=>b.mvpCount-a.mvpCount);
               const lista = statView==="goleadores" ? goleadores : statView==="asistidores" ? asistidores : statView==="tarjetados" ? tarjetados : statView==="mvps" ? mvpRanking : masPartidos;
-              if (lista.length === 0) return <div style={{ fontSize:9, color:"#3a5068", textAlign:"center", padding:"16px 0" }}>Sin datos registrados aún</div>;
+              if (lista.length === 0) return <div style={{ fontSize:9, color:"var(--txt4)", textAlign:"center", padding:"16px 0" }}>Sin datos registrados aún</div>;
               return lista.map((p,i) => {
                 // _stats = stats calculadas para la categoría seleccionada (incluye préstamos)
                 const _s = p._stats || p.stats || {};
@@ -7864,7 +8306,7 @@ export default function App() {
                           </span>
                         )}
                       </div>
-                      <div style={{ fontSize:8, color:"#3a5068" }}>{p.cat} · #{p.num}</div>
+                      <div style={{ fontSize:8, color:"var(--txt4)" }}>{p.cat} · #{p.num}</div>
                       <div className="pb" style={{ marginTop:3 }}>
                         <div className="pf pf-b" style={{ width:pct+"%" }} />
                       </div>
@@ -7892,7 +8334,7 @@ export default function App() {
                 <div key={c} style={{ marginBottom:8 }}>
                   <div style={{ display:"flex", justifyContent:"space-between", fontSize:9, marginBottom:3 }}>
                     <span>{c}</span>
-                    <span style={{ color:"#4e6a88" }}>{ok}/{cp.length} · {pct}%</span>
+                    <span style={{ color:"var(--txt3)" }}>{ok}/{cp.length} · {pct}%</span>
                   </div>
                   <div className="pb">
                     <div className={"pf " + (pct>=70 ? "pf-b" : "pf-r")} style={{ width: pct + "%" }} />
@@ -7959,8 +8401,8 @@ export default function App() {
                 </div>
                 <div style={{ flex:1, minWidth:0 }}>
                   <div style={{ fontSize:11, fontWeight:600 }}>{c.name}</div>
-                  <div style={{ fontSize:8, color:"#4e6a88", marginTop:1 }}>{c.role} · {c.cat}</div>
-                  <div style={{ fontSize:8, color:"#4e6a88", marginTop:1 }}>📞 {c.tel}</div>
+                  <div style={{ fontSize:8, color:"var(--txt3)", marginTop:1 }}>{c.role} · {c.cat}</div>
+                  <div style={{ fontSize:8, color:"var(--txt3)", marginTop:1 }}>📞 {c.tel}</div>
                   <div className="perms" style={{ marginTop:4 }}>
                     {(c.perms||[]).map(p => <span key={p} className="perm">{p}</span>)}
                   </div>
@@ -8118,7 +8560,7 @@ export default function App() {
                   </div>
                   {esPasado && <span className="bg bg-n" style={{ fontSize:7 }}>Pasado</span>}
                 </div>
-                <div style={{ fontSize:8.5, color:"#4e6a88", marginTop:1 }}>⏰ {t.hora} · 📍 {t.lugar}</div>
+                <div style={{ fontSize:8.5, color:"var(--txt3)", marginTop:1 }}>⏰ {t.hora} · 📍 {t.lugar}</div>
                 {t.tema && <div style={{ fontSize:8.5, color:"#7ab3e0", marginTop:2 }}>📋 {t.tema}</div>}
               </div>
               {can("jugadores") && (
@@ -8131,7 +8573,7 @@ export default function App() {
             <div style={{ display:"flex", gap:4, flexWrap:"wrap" }}>
               {(t.cats||[]).map(c=><span key={c} className="bg bg-b">{c}</span>)}
             </div>
-            {t.notas && <div style={{ fontSize:8, color:"#4e6a88", marginTop:5, borderTop:"1px solid rgba(255,255,255,.03)", paddingTop:5 }}>📝 {t.notas}</div>}
+            {t.notas && <div style={{ fontSize:8, color:"var(--txt3)", marginTop:5, borderTop:"1px solid rgba(255,255,255,.03)", paddingTop:5 }}>📝 {t.notas}</div>}
           </div>
         );
       }
@@ -8180,7 +8622,7 @@ export default function App() {
                         background: esHoy?"rgba(21,101,192,.12)":"rgba(255,255,255,.02)",
                         border:`1px solid ${esHoy?"rgba(33,150,243,.3)":"rgba(255,255,255,.04)"}`,
                         display:"flex", flexDirection:"column", alignItems:"center", gap:2 }}>
-                        <div style={{ fontSize:7, color:"#3a5068", fontWeight:600 }}>{DIAS_S[date.getDay()]}</div>
+                        <div style={{ fontSize:7, color:"var(--txt4)", fontWeight:600 }}>{DIAS_S[date.getDay()]}</div>
                         <div style={{ fontSize:11, fontWeight:700, color:esHoy?"#7ab3e0":"#8a9ab0" }}>{date.getDate()}</div>
                         {entrsDia.map((t,ti)=>(
                           <div key={ti} style={{ borderRadius:3, padding:"1px 3px", width:"90%",
@@ -8206,19 +8648,19 @@ export default function App() {
           )}
 
           {myTrains.length===0 && myPast.length===0 && (
-            <div className="card"><p style={{ fontSize:9, color:"#4e6a88", textAlign:"center", padding:"10px 0" }}>Sin entrenamientos registrados</p></div>
+            <div className="card"><p style={{ fontSize:9, color:"var(--txt3)", textAlign:"center", padding:"10px 0" }}>Sin entrenamientos registrados</p></div>
           )}
 
           {myTrains.length>0 && (
             <>
-              <div style={{ fontSize:8, color:"#3a5068", textTransform:"uppercase", letterSpacing:.5, marginBottom:5 }}>Próximos</div>
+              <div style={{ fontSize:8, color:"var(--txt4)", textTransform:"uppercase", letterSpacing:.5, marginBottom:5 }}>Próximos</div>
               {myTrains.map(t=><TrainCard key={t.id} t={t}/>)}
             </>
           )}
 
           {myPast.length>0 && (
             <>
-              <div style={{ fontSize:8, color:"#3a5068", textTransform:"uppercase", letterSpacing:.5, margin:"10px 0 5px" }}>Historial</div>
+              <div style={{ fontSize:8, color:"var(--txt4)", textTransform:"uppercase", letterSpacing:.5, margin:"10px 0 5px" }}>Historial</div>
               {myPast.map(t=><TrainCard key={t.id} t={t}/>)}
             </>
           )}
@@ -8412,7 +8854,7 @@ export default function App() {
                     )}
                   </div>
                 ))}
-                <div style={{ fontSize:7.5, color:"#3a5068", marginTop:3 }}>
+                <div style={{ fontSize:7.5, color:"var(--txt4)", marginTop:3 }}>
                   {trEquips.filter(e=>e.trim()).length >= 2
                     ? `${Math.round(trEquips.filter(e=>e.trim()).length*(trEquips.filter(e=>e.trim()).length-1)/2)} partidos en total`
                     : "Agrega al menos 2 equipos"}
@@ -8448,7 +8890,7 @@ export default function App() {
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
               <div>
                 <div style={{ fontSize:8, color:"#8a7040" }}>{tr.fecha} · {tr.cat}</div>
-                <div style={{ fontSize:9, color:"#4e6a88", marginTop:2 }}>{jugados}/{total} partidos jugados</div>
+                <div style={{ fontSize:9, color:"var(--txt3)", marginTop:2 }}>{jugados}/{total} partidos jugados</div>
               </div>
               <div style={{ display:"flex", gap:5 }}>
                 <button className="btn-sm" style={{ fontSize:8 }} onClick={()=>setTrStep(trStep===2?3:2)}>
@@ -8476,7 +8918,7 @@ export default function App() {
             <div className="card">
               <div className="ch"><span className="ct">📊 Tabla de Posiciones</span></div>
               <div style={{ display:"grid", gridTemplateColumns:"1fr 30px 30px 30px 30px 30px 35px",
-                gap:3, fontSize:7.5, color:"#3a5068", padding:"4px 0", borderBottom:"1px solid rgba(255,255,255,.05)",
+                gap:3, fontSize:7.5, color:"var(--txt4)", padding:"4px 0", borderBottom:"1px solid rgba(255,255,255,.05)",
                 fontWeight:600, textTransform:"uppercase", letterSpacing:.3 }}>
                 <span>Equipo</span><span style={{textAlign:"center"}}>PJ</span>
                 <span style={{textAlign:"center"}}>G</span><span style={{textAlign:"center"}}>E</span>
@@ -8498,7 +8940,7 @@ export default function App() {
                   </div>
                   <span style={{textAlign:"center",fontSize:8.5,color:"#7ab3e0"}}>{row.pj}</span>
                   <span style={{textAlign:"center",fontSize:8.5,color:"#2196F3"}}>{row.g}</span>
-                  <span style={{textAlign:"center",fontSize:8.5,color:"#4e6a88"}}>{row.emp}</span>
+                  <span style={{textAlign:"center",fontSize:8.5,color:"var(--txt3)"}}>{row.emp}</span>
                   <span style={{textAlign:"center",fontSize:8.5,color:"#E53935"}}>{row.p}</span>
                   <span style={{textAlign:"center",fontSize:8.5,color:row.dg>0?"#7ab3e0":row.dg<0?"#e8a0a0":"#4e6a88"}}>
                     {row.dg>0?"+":""}{row.dg}
@@ -8509,7 +8951,7 @@ export default function App() {
                 </div>
               ))}
               {jugados < total && (
-                <div style={{ fontSize:8, color:"#3a5068", textAlign:"center", marginTop:8 }}>
+                <div style={{ fontSize:8, color:"var(--txt4)", textAlign:"center", marginTop:8 }}>
                   Quedan {total-jugados} partido{total-jugados>1?"s":""} por jugar
                 </div>
               )}
@@ -8622,7 +9064,7 @@ export default function App() {
         safeSetDoc(doc(db, "champs", String(ch.id)), { ...ch, llaves });
       }
 
-      const thS = { fontSize:7.5, color:"#3a5068", textAlign:"center", padding:"4px 3px", fontWeight:500, letterSpacing:.3, textTransform:"uppercase" };
+      const thS = { fontSize:7.5, color:"var(--txt4)", textAlign:"center", padding:"4px 3px", fontWeight:500, letterSpacing:.3, textTransform:"uppercase" };
       const tdS = (isRFC, bold) => ({ fontSize:bold?10:9, textAlign:"center", padding:"5px 3px", color: isRFC ? "#7ab3e0" : "#afc4d8", fontWeight: bold ? 700 : 400 });
       const tdTeam = (isRFC) => ({ fontSize:9.5, padding:"5px 4px", color: isRFC ? "#7ab3e0" : "#afc4d8", fontWeight: isRFC ? 700 : 400, maxWidth:90, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" });
 
@@ -8669,7 +9111,7 @@ export default function App() {
                     </div>
                   ))}
                 </div>
-                <div style={{ fontSize:8, color:"#4e6a88", marginTop:4 }}>
+                <div style={{ fontSize:8, color:"var(--txt3)", marginTop:4 }}>
                   Se aplica en fases eliminatorias al terminar empatados
                 </div>
               </div>
@@ -8683,7 +9125,7 @@ export default function App() {
           )}
 
           {champs.length === 0 && !showCForm && (
-            <div className="card"><p style={{ fontSize:9, color:"#4e6a88", textAlign:"center", padding:"10px 0" }}>Sin campeonatos registrados</p></div>
+            <div className="card"><p style={{ fontSize:9, color:"var(--txt3)", textAlign:"center", padding:"10px 0" }}>Sin campeonatos registrados</p></div>
           )}
 
           {champs.map(ch => {
@@ -8733,7 +9175,7 @@ export default function App() {
                               onClick={() => window.open(ch.link, "_blank")}>
                               🌐 Ver tabla oficial
                             </button>
-                          : can("pagos") && <span style={{ fontSize:8, color:"#3a5068" }}>Sin link oficial</span>
+                          : can("pagos") && <span style={{ fontSize:8, color:"var(--txt4)" }}>Sin link oficial</span>
                         }
                         {can("pagos") && (
                           <input className="inp" style={{ flex:2, fontSize:9 }} placeholder="Pegar link oficial..."
@@ -8799,7 +9241,7 @@ export default function App() {
                             </table>
                           </div>
                         ) : (
-                          <p style={{ fontSize:9, color:"#4e6a88", textAlign:"center", padding:"8px 0", marginBottom:8 }}>Sin equipos en la tabla aún</p>
+                          <p style={{ fontSize:9, color:"var(--txt3)", textAlign:"center", padding:"8px 0", marginBottom:8 }}>Sin equipos en la tabla aún</p>
                         )}
 
                         {/* Formulario agregar/editar equipo */}
@@ -8814,7 +9256,7 @@ export default function App() {
                             <div style={{ display:"grid", gridTemplateColumns:"repeat(6,1fr)", gap:4, marginBottom:7 }}>
                               {[["pj","PJ"],["g","G"],["e","E"],["p","P"],["gf","GF"],["gc","GC"]].map(([k,l]) => (
                                 <div key={k}>
-                                  <div style={{ fontSize:7, color:"#3a5068", textAlign:"center", marginBottom:2 }}>{l}</div>
+                                  <div style={{ fontSize:7, color:"var(--txt4)", textAlign:"center", marginBottom:2 }}>{l}</div>
                                   <input className="inp" style={{ textAlign:"center", padding:"5px 2px", fontSize:11 }} type="number" min="0"
                                     value={nsRow[k]} onChange={e => setNsRow(n => ({ ...n, [k]: e.target.value }))} />
                                 </div>
@@ -8840,7 +9282,7 @@ export default function App() {
                         {can("pagos") && ch.standings && ch.standings.length >= 2 && (
                           <div style={{ background:"rgba(212,184,74,.06)", border:"1px solid rgba(212,184,74,.2)", borderRadius:9, padding:"10px", marginBottom:9 }}>
                             <div style={{ fontSize:9, color:"#d4b84a", fontWeight:600, marginBottom:6 }}>⚔️ Iniciar Fase Eliminatoria</div>
-                            <div style={{ fontSize:8, color:"#4e6a88", marginBottom:8 }}>Selecciona desde qué ronda empieza la fase KO:</div>
+                            <div style={{ fontSize:8, color:"var(--txt3)", marginBottom:8 }}>Selecciona desde qué ronda empieza la fase KO:</div>
                             <div style={{ display:"flex", gap:5, flexWrap:"wrap", marginBottom:8 }}>
                               {RONDAS_KO.map(r => (
                                 <div key={r.key}
@@ -8895,7 +9337,7 @@ export default function App() {
                             <div style={{ display:"flex", flexDirection:"column", gap:8, marginBottom:10 }}>
                               {llavesRonda.map((ll, idx) => (
                                 <div key={ll.id} style={{ background:"var(--inp)", borderRadius:9, padding:"10px", border:"1px solid rgba(33,150,243,.1)" }}>
-                                  <div style={{ fontSize:8, color:"#4e6a88", marginBottom:6, textTransform:"uppercase", letterSpacing:.5 }}>
+                                  <div style={{ fontSize:8, color:"var(--txt3)", marginBottom:6, textTransform:"uppercase", letterSpacing:.5 }}>
                                     Llave {idx+1} · {rondaVista}
                                     {ll.ganador && <span style={{ color:"#d4b84a", marginLeft:6 }}>🏆 {ll.ganador}</span>}
                                   </div>
@@ -8920,7 +9362,7 @@ export default function App() {
                                           <input type="number" min="0" className="inp" style={{ width:36, textAlign:"center", padding:"5px 3px", fontSize:14, fontFamily:"'Bebas Neue',sans-serif", color:"#2196F3" }}
                                             value={ll.scoreLocal ?? ""}
                                             onChange={e => saveLlave(ch, { ...ll, scoreLocal: e.target.value === "" ? null : parseInt(e.target.value) })} />
-                                          <span style={{ color:"#4e6a88", fontFamily:"'Bebas Neue',sans-serif", fontSize:14 }}>–</span>
+                                          <span style={{ color:"var(--txt3)", fontFamily:"'Bebas Neue',sans-serif", fontSize:14 }}>–</span>
                                           <input type="number" min="0" className="inp" style={{ width:36, textAlign:"center", padding:"5px 3px", fontSize:14, fontFamily:"'Bebas Neue',sans-serif", color:"#E53935" }}
                                             value={ll.scoreVisitante ?? ""}
                                             onChange={e => saveLlave(ch, { ...ll, scoreVisitante: e.target.value === "" ? null : parseInt(e.target.value) })} />
@@ -8949,7 +9391,7 @@ export default function App() {
                                   {/* Ganador */}
                                   {can("pagos") && ll.local && ll.visitante && ll.scoreLocal !== null && ll.scoreVisitante !== null && (
                                     <div style={{ display:"flex", gap:5, marginTop:7 }}>
-                                      <div style={{ fontSize:8, color:"#4e6a88", alignSelf:"center" }}>Ganador:</div>
+                                      <div style={{ fontSize:8, color:"var(--txt3)", alignSelf:"center" }}>Ganador:</div>
                                       {[ll.local, ll.visitante].map(eq => (
                                         <button key={eq} className="btn-sm"
                                           style={{ flex:1, fontSize:9, padding:"5px 6px",
@@ -9002,7 +9444,7 @@ export default function App() {
                           💳 Inscripciones
                         </div>
                         <div style={{ display:"flex", justifyContent:"space-between", fontSize:9, marginBottom:4 }}>
-                          <span style={{ color:"#4e6a88" }}>Pagadas</span>
+                          <span style={{ color:"var(--txt3)" }}>Pagadas</span>
                           <span style={{ color:"#7ab3e0", fontWeight:500 }}>{paid}/{total} · {pct}%</span>
                         </div>
                         <div className="pb" style={{ marginBottom:8 }}>
@@ -9025,7 +9467,7 @@ export default function App() {
                             );
                           })}
                         </div>
-                        <div style={{ fontSize:7.5, color:"#3a5068", marginTop:5 }}>Toca el avatar para marcar/desmarcar pago</div>
+                        <div style={{ fontSize:7.5, color:"var(--txt4)", marginTop:5 }}>Toca el avatar para marcar/desmarcar pago</div>
                       </>
                     )}
                   </>
@@ -9132,7 +9574,7 @@ export default function App() {
           {/* ── REPORTE MENSUAL ── */}
           <div className="card" style={{ marginBottom:8 }}>
             <div className="ch"><span className="ct">📊 Reporte Mensual</span></div>
-            <p style={{ fontSize:9, color:"#4e6a88", marginBottom:10, lineHeight:1.6 }}>
+            <p style={{ fontSize:9, color:"var(--txt3)", marginBottom:10, lineHeight:1.6 }}>
               Genera un PDF con el resumen del mes: pagos, asistencia, partidos jugados y estadísticas por jugador.
             </p>
             <button className="btn" onClick={generateMonthlyReport}>
@@ -9144,7 +9586,7 @@ export default function App() {
           {can("calendario") && (
             <div className="card" style={{ marginBottom:8, border:"1px solid rgba(229,57,53,.12)" }}>
               <div className="ch"><span className="ct">📋 Partidos Anteriores</span></div>
-              <p style={{ fontSize:9, color:"#4e6a88", marginBottom:10, lineHeight:1.6 }}>
+              <p style={{ fontSize:9, color:"var(--txt3)", marginBottom:10, lineHeight:1.6 }}>
                 Registra partidos jugados antes de usar la app para tener el historial completo en la base de datos.
               </p>
               <button className="btn" style={{ background:"rgba(229,57,53,.08)", border:"1px solid rgba(229,57,53,.2)", color:"#e8a0a0" }}
@@ -9164,7 +9606,7 @@ export default function App() {
                   <span className="ct">📅 Temporada</span>
                   <span className="bg bg-b">{tempActual}</span>
                 </div>
-                <div style={{ fontSize:9, color:"#4e6a88", marginBottom:8, lineHeight:1.6 }}>
+                <div style={{ fontSize:9, color:"var(--txt3)", marginBottom:8, lineHeight:1.6 }}>
                   La temporada cambia automáticamente el 1 de enero. Al iniciar una nueva temporada se
                   reinician pagos, estadísticas y sanciones. <strong style={{ color:"#d4b84a" }}>
                   Si hay un campeonato activo, los datos no se reinician hasta que finalice.</strong>
@@ -9221,7 +9663,7 @@ export default function App() {
               </div>
               <div>
                 <div style={{ fontSize:13, fontWeight:600 }}>{user.name}</div>
-                <div style={{ fontSize:9, color:"#4e6a88", marginTop:2 }}>{user.role} · Categoría: {user.cat}</div>
+                <div style={{ fontSize:9, color:"var(--txt3)", marginTop:2 }}>{user.role} · Categoría: {user.cat}</div>
                 <div style={{ display:"flex", gap:4, marginTop:5, flexWrap:"wrap" }}>
                   {user.perms.map(p => <span key={p} className="perm">{p}</span>)}
                 </div>
@@ -9278,7 +9720,7 @@ export default function App() {
                     ["C.I. Directora", clubConfig.directoraCedula],
                   ].map(([k,v]) => (
                     <div key={k} style={{ display:"flex", justifyContent:"space-between", padding:"5px 0", borderBottom:"1px solid rgba(255,255,255,.02)", fontSize:10 }}>
-                      <span style={{ color:"#4e6a88" }}>{k}</span>
+                      <span style={{ color:"var(--txt3)" }}>{k}</span>
                       <span style={{ fontWeight:500 }}>{v}</span>
                     </div>
                   ))}
@@ -9310,7 +9752,7 @@ export default function App() {
           {can("entrenadores") && (
             <div className="card" style={{ marginBottom:8 }}>
               <div className="ch"><span className="ct">Meses de Temporada</span><span className="bg bg-b">{clubConfig.mesesActivos.length}/12</span></div>
-              <p style={{ fontSize:8, color:"#4e6a88", marginBottom:8, lineHeight:1.5 }}>Toca para activar o desactivar los meses que se cobran esta temporada.</p>
+              <p style={{ fontSize:8, color:"var(--txt3)", marginBottom:8, lineHeight:1.5 }}>Toca para activar o desactivar los meses que se cobran esta temporada.</p>
               <div className="mgrid">
                 {ACTIVE_MONTHS.map(m => {
                   const on = clubConfig.mesesActivos.includes(m);
@@ -9339,7 +9781,7 @@ export default function App() {
                 <div key={c} style={{ marginBottom:8 }}>
                   <div style={{ display:"flex", justifyContent:"space-between", fontSize:9, marginBottom:3 }}>
                     <span style={{ fontWeight:600 }}>{c}</span>
-                    <span style={{ color:"#4e6a88" }}>{cnt} / {clubConfig.maxJugadoresCat} jugadores</span>
+                    <span style={{ color:"var(--txt3)" }}>{cnt} / {clubConfig.maxJugadoresCat} jugadores</span>
                   </div>
                   <div className="pb">
                     <div className={"pf " + (pct>=90?"pf-r":"pf-b")} style={{ width: Math.min(pct,100) + "%" }} />
@@ -9352,7 +9794,7 @@ export default function App() {
           {/* ── CERRAR SESIÓN ── */}
           <div className="card card-r">
             <div className="ch"><span className="ct">Sesión Activa</span></div>
-            <p style={{ fontSize:9, color:"#4e6a88", marginBottom:10, lineHeight:1.5 }}>
+            <p style={{ fontSize:9, color:"var(--txt3)", marginBottom:10, lineHeight:1.5 }}>
               Conectado como <strong style={{ color:"var(--txt)" }}>{user.name}</strong> · {user.role}
             </p>
             <button className="btn btn-red" onClick={logout}>🚪 CERRAR SESIÓN</button>
@@ -9399,7 +9841,7 @@ export default function App() {
               <span className="ct">🔔 Notificaciones</span>
               <button className="btn-sm" onClick={() => notifs.filter(n=>!n.read).forEach(n => updateDoc(doc(db,"notifs",n.id),{read:true}))}>Marcar leídas</button>
             </div>
-            {notifs.length === 0 && <p style={{ fontSize:9, color:"#4e6a88", textAlign:"center" }}>Sin notificaciones</p>}
+            {notifs.length === 0 && <p style={{ fontSize:9, color:"var(--txt3)", textAlign:"center" }}>Sin notificaciones</p>}
             {notifs.map(n => (
               <div key={n.id} className="notif-row" onClick={() => {
                 updateDoc(doc(db, "notifs", n.id), { read: true });
@@ -9414,7 +9856,7 @@ export default function App() {
                       border:"1px solid rgba(229,57,53,.3)", letterSpacing:.5 }}>🔴 EN VIVO</span>
                   )}
                   <div style={{ fontSize:10.5 }}>{n.txt}</div>
-                  <div style={{ fontSize:8, color:"#4e6a88", marginTop:1 }}>{timeAgo(n.ts)}</div>
+                  <div style={{ fontSize:8, color:"var(--txt3)", marginTop:1 }}>{timeAgo(n.ts)}</div>
                 </div>
               </div>
             ))}
@@ -9448,7 +9890,7 @@ export default function App() {
                 <div style={{ fontSize:9.5, fontWeight:700, color:"#e8a0a0" }}>
                   🔴 EN VIVO — {liveM.home} vs {liveM.away}
                 </div>
-                <div style={{ fontSize:8, color:"#4e6a88", marginTop:1 }}>
+                <div style={{ fontSize:8, color:"var(--txt3)", marginTop:1 }}>
                   {liveM.cat} · Toca para volver al partido
                 </div>
               </div>
@@ -9470,7 +9912,7 @@ export default function App() {
             <span style={{ fontSize:16 }}>🔄</span>
             <div style={{ flex:1 }}>
               <div style={{ fontSize:9.5, fontWeight:600, color:"#7ab3e0" }}>Nueva versión disponible</div>
-              <div style={{ fontSize:7.5, color:"#4e6a88" }}>Hay una actualización de Rómulo F.C lista para instalar.</div>
+              <div style={{ fontSize:7.5, color:"var(--txt3)" }}>Hay una actualización de Rómulo F.C lista para instalar.</div>
             </div>
             <button
               onClick={() => {
@@ -9482,7 +9924,7 @@ export default function App() {
               Actualizar ↑
             </button>
             <button onClick={() => setSwUpdate(false)}
-              style={{ background:"none", border:"none", color:"#4e6a88", fontSize:16,
+              style={{ background:"none", border:"none", color:"var(--txt3)", fontSize:16,
                 cursor:"pointer", padding:"0 4px", flexShrink:0 }}>
               ✕
             </button>
@@ -9701,9 +10143,9 @@ export default function App() {
                   <div style={{ background:"rgba(229,57,53,.05)", border:"1px solid rgba(229,57,53,.15)",
                     borderRadius:8, padding:"7px 10px", marginBottom:10 }}>
                     <div style={{ fontSize:10, fontWeight:600 }}>{hp.home} {hp.scoreH} – {hp.scoreA} {hp.away}</div>
-                    <div style={{ fontSize:8, color:"#4e6a88" }}>{hp.date} · {hp.cat}</div>
+                    <div style={{ fontSize:8, color:"var(--txt3)" }}>{hp.date} · {hp.cat}</div>
                   </div>
-                  <div style={{ fontSize:8, color:"#4e6a88", marginBottom:8 }}>
+                  <div style={{ fontSize:8, color:"var(--txt3)", marginBottom:8 }}>
                     Marca los jugadores que participaron y sus estadísticas. Solo lo que recuerdes.
                   </div>
 
@@ -9718,7 +10160,7 @@ export default function App() {
                           <Avatar p={p} size={26}/>
                           <div style={{ flex:1 }}>
                             <div style={{ fontSize:9.5, fontWeight:600 }}>{p.nombre} {p.apellido}</div>
-                            <div style={{ fontSize:7.5, color:"#4e6a88" }}>#{p.num} · {p.cat}</div>
+                            <div style={{ fontSize:7.5, color:"var(--txt3)" }}>#{p.num} · {p.cat}</div>
                           </div>
                           <button className={"ck"+(jugó?" on":"")}
                             onClick={()=>setHpStats(prev=>({...prev,[p.id]:{...(prev[p.id]||{}),jugó:!jugó}}))}>
@@ -9729,7 +10171,7 @@ export default function App() {
                           <div style={{ display:"flex", gap:6, alignItems:"center", flexWrap:"wrap", paddingLeft:34 }}>
                             {/* Goles */}
                             <div style={{ display:"flex", alignItems:"center", gap:4 }}>
-                              <span style={{ fontSize:8, color:"#4e6a88" }}>⚽</span>
+                              <span style={{ fontSize:8, color:"var(--txt3)" }}>⚽</span>
                               <button className="btn-sm" style={{ width:22, height:22, padding:0, fontSize:12 }}
                                 onClick={()=>setHpStats(prev=>({...prev,[p.id]:{...(prev[p.id]||{}),goles:Math.max(0,((prev[p.id]?.goles)||0)-1)}}))}>−</button>
                               <span style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:16, color:"#7ab3e0", minWidth:16, textAlign:"center" }}>{s.goles||0}</span>
@@ -9738,7 +10180,7 @@ export default function App() {
                             </div>
                             {/* Asistencias */}
                             <div style={{ display:"flex", alignItems:"center", gap:4 }}>
-                              <span style={{ fontSize:8, color:"#4e6a88" }}>🎯</span>
+                              <span style={{ fontSize:8, color:"var(--txt3)" }}>🎯</span>
                               <button className="btn-sm" style={{ width:22, height:22, padding:0, fontSize:12 }}
                                 onClick={()=>setHpStats(prev=>({...prev,[p.id]:{...(prev[p.id]||{}),asistencias:Math.max(0,((prev[p.id]?.asistencias)||0)-1)}}))}>−</button>
                               <span style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:16, color:"#7ab3e0", minWidth:16, textAlign:"center" }}>{s.asistencias||0}</span>
@@ -9814,10 +10256,10 @@ export default function App() {
                 <Avatar p={p} size={32}/>
                 <div>
                   <div style={{ fontSize:11, fontWeight:600 }}>{p.nombre} {p.apellido}</div>
-                  <div style={{ fontSize:8, color:"#4e6a88" }}>{p.cat} · #{p.num}</div>
+                  <div style={{ fontSize:8, color:"var(--txt3)" }}>{p.cat} · #{p.num}</div>
                 </div>
               </div>
-              <div style={{ fontSize:8, color:"#4e6a88", marginBottom:10, lineHeight:1.6 }}>
+              <div style={{ fontSize:8, color:"var(--txt3)", marginBottom:10, lineHeight:1.6 }}>
                 ⚠️ Editar manualmente sobreescribe las estadísticas acumuladas automáticamente.
               </div>
               {fields.map(({key,label,color}) => (
@@ -9865,7 +10307,7 @@ export default function App() {
                 📋 Encuesta Post-Entreno
                 <span className="mx" onClick={() => setSurveyTarget(null)}>✕</span>
               </div>
-              <div style={{ fontSize:9, color:"#4e6a88", marginBottom:12 }}>
+              <div style={{ fontSize:9, color:"var(--txt3)", marginBottom:12 }}>
                 {nombre} · {session}
               </div>
 
@@ -9996,13 +10438,13 @@ export default function App() {
                     <div style={{ flex:1, textAlign:"center" }}>
                       <Avatar p={pA} size={36} />
                       <div style={{ fontSize:9, fontWeight:600, marginTop:3 }}>{pA.nombre} {pA.apellido}</div>
-                      <div style={{ fontSize:7.5, color:"#4e6a88" }}>{pA.cat} · #{pA.num}</div>
+                      <div style={{ fontSize:7.5, color:"var(--txt3)" }}>{pA.cat} · #{pA.num}</div>
                     </div>
                     <div style={{ width:20 }}/>
                     <div style={{ flex:1, textAlign:"center" }}>
                       <Avatar p={pB} size={36} />
                       <div style={{ fontSize:9, fontWeight:600, marginTop:3 }}>{pB.nombre} {pB.apellido}</div>
-                      <div style={{ fontSize:7.5, color:"#4e6a88" }}>{pB.cat} · #{pB.num}</div>
+                      <div style={{ fontSize:7.5, color:"var(--txt3)" }}>{pB.cat} · #{pB.num}</div>
                     </div>
                   </div>
                   {/* Barras comparativas */}
@@ -10055,7 +10497,7 @@ export default function App() {
                 </>
               )}
               {(!pA || !pB) && (
-                <div style={{ textAlign:"center", padding:"20px 0", fontSize:9, color:"#4e6a88" }}>
+                <div style={{ textAlign:"center", padding:"20px 0", fontSize:9, color:"var(--txt3)" }}>
                   Selecciona dos jugadores para comparar
                 </div>
               )}
@@ -10095,7 +10537,7 @@ export default function App() {
                 📸 Fotos del Partido
                 <span className="mx" onClick={()=>setGaleriaModal(null)}>✕</span>
               </div>
-              <div style={{ fontSize:8.5, color:"#4e6a88", marginBottom:10 }}>
+              <div style={{ fontSize:8.5, color:"var(--txt3)", marginBottom:10 }}>
                 {match.home} vs {match.away} · {match.date}
               </div>
 
@@ -10124,7 +10566,7 @@ export default function App() {
                   {puedeSubir && fotos.length < MAX_FOTOS && (
                     <label style={{ aspectRatio:"1", border:"1px dashed rgba(33,150,243,.25)", borderRadius:8,
                       display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center",
-                      cursor:"pointer", color:"#4e6a88", fontSize:8, gap:3 }}>
+                      cursor:"pointer", color:"var(--txt3)", fontSize:8, gap:3 }}>
                       <span style={{ fontSize:20 }}>📷</span>
                       <span>Agregar</span>
                       <input type="file" accept="image/*" capture="environment"
@@ -10137,24 +10579,24 @@ export default function App() {
                   {puedeSubir ? (
                     <label style={{ cursor:"pointer" }}>
                       <div style={{ fontSize:36 }}>📷</div>
-                      <div style={{ fontSize:9, color:"#4e6a88", marginTop:6 }}>
+                      <div style={{ fontSize:9, color:"var(--txt3)", marginTop:6 }}>
                         Toca para agregar la primera foto
                       </div>
-                      <div style={{ fontSize:8, color:"#3a5068", marginTop:3 }}>
+                      <div style={{ fontSize:8, color:"var(--txt4)", marginTop:3 }}>
                         Máximo {MAX_FOTOS} fotos por partido
                       </div>
                       <input type="file" accept="image/*" capture="environment"
                         style={{ display:"none" }} onChange={subirFoto}/>
                     </label>
                   ) : (
-                    <div style={{ fontSize:9, color:"#3a5068" }}>Sin fotos aún</div>
+                    <div style={{ fontSize:9, color:"var(--txt4)" }}>Sin fotos aún</div>
                   )}
                 </div>
               )}
 
               {/* Indicador cantidad */}
               {fotos.length > 0 && (
-                <div style={{ textAlign:"center", fontSize:8, color:"#3a5068", marginBottom:10 }}>
+                <div style={{ textAlign:"center", fontSize:8, color:"var(--txt4)", marginBottom:10 }}>
                   {fotos.length}/{MAX_FOTOS} fotos
                 </div>
               )}
@@ -10171,11 +10613,12 @@ export default function App() {
         // Convocados del partido — de att_matches si existe, sino de playerStats, sino todos los de la cat
         const attM    = attMatches.find(a => a.matchId === mvpModal || String(a.matchId) === String(mvpModal));
         const psIds   = Object.keys(match.playerStats || {}).map(Number);
+        // Solo los que realmente jugaron — att_matches → playerStats → vacío
         const convIds = attM?.convocados?.length > 0
           ? attM.convocados
           : psIds.length > 0
             ? psIds
-            : players.filter(p => p.cat === match.cat).map(p => p.id);
+            : [];
         const convPls = convIds.map(id => players.find(p => String(p.id)===String(id))).filter(Boolean);
 
         // Votos actuales
@@ -10324,7 +10767,7 @@ export default function App() {
                 🏅 MVP — {match.home} vs {match.away}
                 <span className="mx" onClick={() => setMvpModal(null)}>✕</span>
               </div>
-              <div style={{ fontSize:8, color:"#4e6a88", marginBottom:10 }}>
+              <div style={{ fontSize:8, color:"var(--txt3)", marginBottom:10 }}>
                 {match.date} · {match.cat} · {match.scoreH}–{match.scoreA}
               </div>
 
@@ -10350,7 +10793,7 @@ export default function App() {
                     {mvpP.nombre} {mvpP.apellido}
                   </div>
                   <div style={{ fontSize:9, color:"#7ab3e0" }}>#{mvpP.num} · {mvpP.cat}</div>
-                  <div style={{ fontSize:8, color:"#4e6a88", marginTop:3 }}>
+                  <div style={{ fontSize:8, color:"var(--txt3)", marginTop:3 }}>
                     {Object.values(votosActuales).filter(v=>v===mvpId).length} voto{Object.values(votosActuales).filter(v=>v===mvpId).length>1?"s":""}
                   </div>
                 </div>
@@ -10381,7 +10824,7 @@ export default function App() {
                 return vP ? (
                   <div style={{ background:"rgba(21,101,192,.08)", borderRadius:8, padding:"7px 10px", marginBottom:10,
                     display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                    <span style={{ fontSize:9, color:"#4e6a88" }}>Tu voto:</span>
+                    <span style={{ fontSize:9, color:"var(--txt3)" }}>Tu voto:</span>
                     <span style={{ fontSize:10, color:"#7ab3e0", fontWeight:600 }}>#{vP.num} {vP.nombre} {vP.apellido}</span>
                     {!votacionCerrada && (
                       <button className="btn-sm" style={{ fontSize:8 }}
@@ -10408,7 +10851,7 @@ export default function App() {
               {/* Marcador de todos los votos */}
               {votosEmit > 0 && (
                 <div style={{ marginBottom:10 }}>
-                  <div style={{ fontSize:8, color:"#3a5068", marginBottom:5, textTransform:"uppercase", letterSpacing:.5 }}>
+                  <div style={{ fontSize:8, color:"var(--txt4)", marginBottom:5, textTransform:"uppercase", letterSpacing:.5 }}>
                     Marcador de votos
                   </div>
                   {Object.entries(conteo).sort((a,b)=>b[1]-a[1]).map(([pid,v]) => {
@@ -10454,7 +10897,7 @@ export default function App() {
                   </button>
 
                   {/* WhatsApp al jugador y representante */}
-                  <div style={{ fontSize:8, color:"#4e6a88", marginBottom:6, textAlign:"center" }}>
+                  <div style={{ fontSize:8, color:"var(--txt3)", marginBottom:6, textAlign:"center" }}>
                     Envía la felicitación por WhatsApp:
                   </div>
                   <div style={{ display:"flex", gap:7 }}>
@@ -10677,20 +11120,35 @@ export default function App() {
           m={quickResult}
           players={players}
           onClose={()=>{ setQuickResult(null); setQr({scoreH:"",scoreA:"",goleadores:[]}); }}
-          onSave={(sH,sA,playerStats,events)=>{
+          onSave={(sH,sA,playerStats,events,convocadosIds)=>{
             const matchData={...quickResult,scoreH:sH,scoreA:sA,status:"finalizado",events,playerStats};
             safeSetDoc(doc(db,"matches",String(quickResult.id)),matchData);
-            // Actualizar stats de cada jugador
-            const catPls=players.filter(p=>p.cat===quickResult.cat);
-            catPls.forEach(pl=>{
-              const ps=playerStats[pl.id]||{};
-              const cur=pl.stats||{goles:0,asistencias:0,partidos:0};
-              safeSetDoc(doc(db,"players",String(pl.id)),{...pl,stats:{
-                goles:(cur.goles||0)+(ps.goles||0),
-                asistencias:(cur.asistencias||0)+(ps.asistencias||0),
-                partidos:(cur.partidos||0)+1,
+
+            // Guardar att_matches con los convocados reales
+            if (convocadosIds && convocadosIds.length > 0) {
+              safeSetDoc(doc(db,"att_matches","matt_"+quickResult.id), {
+                matchId: quickResult.id,
+                date:    quickResult.date,
+                cat:     quickResult.cat,
+                home:    quickResult.home,
+                away:    quickResult.away,
+                convocados: convocadosIds,
+                titulares:  convocadosIds, // en resultado todos son "convocados"
+                mvp: null
+              });
+            }
+
+            // Actualizar stats — solo los convocados suman partido
+            const convIds = convocadosIds || Object.keys(playerStats).map(Number);
+            const convPls = players.filter(p => convIds.map(String).includes(String(p.id)));
+            convPls.forEach(pl => {
+              const ps  = playerStats[pl.id] || {};
+              const cur = pl.stats || {goles:0,asistencias:0,partidos:0};
+              safeSetDoc(doc(db,"players",String(pl.id)),{...pl, stats:{
+                goles:       (cur.goles||0)+(ps.goles||0),
+                asistencias: (cur.asistencias||0)+(ps.asistencias||0),
+                partidos:    (cur.partidos||0)+1,
               }});
-              // Tarjetas
               if (ps.amarilla||ps.roja) {
                 const sc=sanc[pl.id]||{yellows:0,reds:0,suspended:false};
                 safeSetDoc(doc(db,"sanc",String(pl.id)),{
@@ -10701,12 +11159,86 @@ export default function App() {
                 });
               }
             });
+
             const res=sH>sA?"🏆 VICTORIA":sH<sA?"😔 DERROTA":"🤝 EMPATE";
             addNotif(res+" · "+quickResult.home+" "+sH+"-"+sA+" "+quickResult.away,"calendario","cat:"+quickResult.cat,"resultado");
             setQuickResult(null);
           }}
         />
       )}
+
+      {/* ── MODAL EDITAR CONVOCADOS ── */}
+      {editConvModal && (() => {
+        const m = editConvModal;
+        const attM = attMatches.find(a => String(a.matchId)===String(m.id));
+        const ps   = m.playerStats || {};
+
+        // Estado inicial: quiénes están marcados actualmente
+        // Si hay att_matches usar esos, sino los que tienen playerStats
+        const inicialIds = new Set(
+          attM?.convocados?.map(String) ||
+          Object.keys(ps).map(String)
+        );
+
+        // Usamos un componente interno para tener estado local
+        return (
+          <EditConvModal
+            m={m}
+            players={players}
+            inicialIds={inicialIds}
+            onClose={()=>setEditConvModal(null)}
+            onSave={(nuevosIds)=>{
+              // Limpiar playerStats — quitar jugadores que no jugaron
+              const nuevoPs = {};
+              nuevosIds.forEach(id => {
+                if (ps[id]) nuevoPs[id] = ps[id];
+                else nuevoPs[id] = { goles:0, asistencias:0 };
+              });
+              // Guardar partido actualizado
+              safeSetDoc(doc(db,"matches",String(m.id)), { ...m, playerStats: nuevoPs });
+              // Guardar att_matches actualizado
+              const attData = {
+                matchId:   m.id,
+                date:      m.date,
+                cat:       m.cat,
+                home:      m.home,
+                away:      m.away,
+                convocados: nuevosIds,
+                titulares:  attM?.titulares?.filter(id => nuevosIds.includes(String(id))) || nuevosIds,
+                mvp:       m.mvp || null
+              };
+              safeSetDoc(doc(db,"att_matches","matt_"+m.id), attData);
+
+              // Corregir stats de jugadores removidos — restar 1 partido
+              const removidos = [...inicialIds].filter(id => !nuevosIds.includes(id));
+              removidos.forEach(pid => {
+                const pl = players.find(x=>String(x.id)===String(pid));
+                if (!pl) return;
+                const cur = pl.stats || {goles:0,asistencias:0,partidos:0};
+                const psStat = ps[pid] || {};
+                safeSetDoc(doc(db,"players",String(pid)), { ...pl, stats: {
+                  goles:       Math.max(0,(cur.goles||0)-(psStat.goles||0)),
+                  asistencias: Math.max(0,(cur.asistencias||0)-(psStat.asistencias||0)),
+                  partidos:    Math.max(0,(cur.partidos||0)-1),
+                }});
+              });
+
+              // Agregar stats a jugadores nuevos añadidos
+              const agregados = nuevosIds.filter(id => ![...inicialIds].includes(id));
+              agregados.forEach(pid => {
+                const pl = players.find(x=>String(x.id)===String(pid));
+                if (!pl) return;
+                const cur = pl.stats || {goles:0,asistencias:0,partidos:0};
+                safeSetDoc(doc(db,"players",String(pid)), { ...pl, stats: {
+                  ...cur, partidos: (cur.partidos||0)+1
+                }});
+              });
+
+              setEditConvModal(null);
+            }}
+          />
+        );
+      })()}
 
       {/* ── MODAL EXENCIÓN DE MES ── */}
       {exentoModal && (() => {
@@ -10745,7 +11277,7 @@ export default function App() {
                   {mes} — {pl.cat} · #{pl.num}
                 </div>
               </div>
-              <div style={{ fontSize:8.5, color:"#4e6a88", marginBottom:10, lineHeight:1.6 }}>
+              <div style={{ fontSize:8.5, color:"var(--txt3)", marginBottom:10, lineHeight:1.6 }}>
                 El mes quedará marcado como <strong style={{ color:"#d4b84a" }}>🔓 Exento</strong> — 
                 no contará como deuda ni como pago. Se registrará en el historial.
               </div>
@@ -10803,8 +11335,8 @@ export default function App() {
                 <Avatar p={p} size={32} />
                 <div>
                   <div style={{ fontSize:11, fontWeight:600 }}>{p.nombre} {p.apellido}</div>
-                  <div style={{ fontSize:8, color:"#4e6a88" }}>{p.cat} · CI: {p.cedula}</div>
-                  <div style={{ fontSize:8, color:"#4e6a88" }}>Rep: {p.repNombre} {p.repApellido} · {p.repTel}</div>
+                  <div style={{ fontSize:8, color:"var(--txt3)" }}>{p.cat} · CI: {p.cedula}</div>
+                  <div style={{ fontSize:8, color:"var(--txt3)" }}>Rep: {p.repNombre} {p.repApellido} · {p.repTel}</div>
                 </div>
               </div>
 
@@ -10859,11 +11391,11 @@ export default function App() {
 
               <div style={{ display:"flex", gap:6, marginBottom:12 }}>
                 <div style={{ flex:1, background:"rgba(21,101,192,.08)", borderRadius:7, padding:"7px 10px", textAlign:"center" }}>
-                  <div style={{ fontSize:8, color:"#4e6a88" }}>Mes</div>
+                  <div style={{ fontSize:8, color:"var(--txt3)" }}>Mes</div>
                   <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:18, color:"#7ab3e0", letterSpacing:.5 }}>{payModal.mes}</div>
                 </div>
                 <div style={{ flex:1, background:"rgba(21,101,192,.08)", borderRadius:7, padding:"7px 10px", textAlign:"center" }}>
-                  <div style={{ fontSize:8, color:"#4e6a88" }}>{yaPagado ? "Registrado por" : "Entrenador"}</div>
+                  <div style={{ fontSize:8, color:"var(--txt3)" }}>{yaPagado ? "Registrado por" : "Entrenador"}</div>
                   <div style={{ fontSize:9, fontWeight:600, color:"var(--txt)", marginTop:3 }}>{user?.name}</div>
                 </div>
               </div>
@@ -10916,7 +11448,7 @@ export default function App() {
                 <div style={{ display:"flex", alignItems:"center", gap:6, background:"rgba(33,150,243,.04)",
                   borderRadius:7, padding:"7px 9px", marginBottom:8 }}>
                   <span style={{ fontSize:12 }}>ℹ️</span>
-                  <span style={{ fontSize:8, color:"#4e6a88" }}>Pago en efectivo — no se requiere referencia.</span>
+                  <span style={{ fontSize:8, color:"var(--txt3)" }}>Pago en efectivo — no se requiere referencia.</span>
                 </div>
               )}
 
@@ -10935,7 +11467,7 @@ export default function App() {
               {equivalente && (
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center",
                   background:"rgba(21,101,192,.08)", borderRadius:7, padding:"7px 10px", marginBottom:8 }}>
-                  <span style={{ fontSize:8, color:"#4e6a88" }}>Equivalente en Bs. (tasa {parseFloat(tasaCambio).toFixed(2)})</span>
+                  <span style={{ fontSize:8, color:"var(--txt3)" }}>Equivalente en Bs. (tasa {parseFloat(tasaCambio).toFixed(2)})</span>
                   <span style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:16,
                     color:"#7ab3e0", letterSpacing:.5 }}>Bs. {equivalente}</span>
                 </div>
@@ -10981,7 +11513,7 @@ export default function App() {
               <div style={{ display:"flex", alignItems:"center", gap:5, marginTop:10,
                 background:"rgba(33,150,243,.04)", borderRadius:7, padding:"7px 9px" }}>
                 <span style={{ fontSize:13 }}>📄</span>
-                <span style={{ fontSize:8, color:"#4e6a88", lineHeight:1.5 }}>
+                <span style={{ fontSize:8, color:"var(--txt3)", lineHeight:1.5 }}>
                   Se generará y descargará un comprobante PDF automáticamente al confirmar.
                 </span>
               </div>
@@ -11001,7 +11533,7 @@ export default function App() {
             <div style={{ fontSize:10, color:"var(--txt)", marginBottom:4 }}>
               {confirmDelM.home} vs {confirmDelM.away}
             </div>
-            <div style={{ fontSize:9, color:"#4e6a88", marginBottom:14 }}>
+            <div style={{ fontSize:9, color:"var(--txt3)", marginBottom:14 }}>
               {confirmDelM.date} · {confirmDelM.time} · {confirmDelM.cat}
             </div>
             <div style={{ fontSize:9, color:"#ef9a9a", marginBottom:14 }}>
@@ -11032,7 +11564,7 @@ export default function App() {
             <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:18, color:"#7ab3e0", marginBottom:2 }}>
               Jugador registrado
             </div>
-            <div style={{ fontSize:11, color:"#4e6a88", marginBottom:14 }}>
+            <div style={{ fontSize:11, color:"var(--txt3)", marginBottom:14 }}>
               {newPlayerWA.nombre} {newPlayerWA.apellido}
             </div>
             <div style={{ fontSize:10, color:"var(--txt)", marginBottom:10 }}>
