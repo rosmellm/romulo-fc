@@ -3194,7 +3194,11 @@ export default function App() {
     const base = matches.filter(m => {
       const catOk = !user || user.cat === "Todas" || m.cat === user.cat;
       const filt  = catF === "Todas" || m.cat === catF;
-      return catOk && filt;
+      if (!catOk || !filt) return false;
+      // Solo partidos de esta semana (lunes a domingo)
+      const fd = parseMatchDate(m.date);
+      if (!fd) return true; // sin fecha → mostrar siempre
+      return fd >= lunesActual && fd <= domingoActual;
     });
 
     return sortMatches(base);
@@ -3837,7 +3841,9 @@ export default function App() {
   function saveMatch() {
     if (!nm.away || !nm.date || !nm.time || !nm.field) { setFormErr("Completa todos los campos"); return; }
     if (editMid) {
-      safeSetDoc(doc(db, "matches", editMid), { ...nm });
+      // Preservar campos existentes (status, scoreH, scoreA, mvp, events, playerStats)
+      const existing = matches.find(m => String(m.id) === String(editMid)) || {};
+      safeSetDoc(doc(db, "matches", String(editMid)), { ...existing, ...nm, id: String(editMid) });
       addNotif("🔄 Partido reprogramado: " + nm.home + " vs " + nm.away + " · " + nm.date, "calendario", "cat:"+nm.cat, "partido");
       setEditMid(null);
     } else {
@@ -7175,51 +7181,72 @@ export default function App() {
                 style={{ cursor: m.status==="finalizado" ? "pointer" : "default" }}>
                 <MatchCard m={m} champs={champs} />
               </div>
-              {/* Detalle expandido inline — solo convocados */}
+              {/* Detalle expandido inline — convocados + stats */}
               {matchDetail?.id === m.id && m.status === "finalizado" && (() => {
-                // Convocados: de att_matches si existe, sino de playerStats
                 const attM    = attMatches.find(a => String(a.matchId)===String(m.id));
-                const psIds   = Object.keys(m.playerStats||{}).map(String);
+                const ps      = m.playerStats || {};
+                // Convocados: att_matches → playerStats → todos de la cat
                 const convIds = attM?.convocados?.length > 0
                   ? attM.convocados.map(String)
-                  : psIds.length > 0 ? psIds
+                  : Object.keys(ps).length > 0 ? Object.keys(ps).map(String)
                   : players.filter(p=>p.cat===m.cat).map(p=>String(p.id));
                 const convPls = convIds.map(id=>players.find(p=>String(p.id)===id)).filter(Boolean);
                 const mvpPl   = m.mvp?.playerId ? players.find(x=>String(x.id)===String(m.mvp.playerId)) : null;
+                // Stats globales del partido
+                const goleadores = Object.entries(ps).filter(([,s])=>(s.goles||0)>0)
+                  .map(([pid,s])=>{ const pl=players.find(x=>String(x.id)===String(pid)); return pl?{pl,goles:s.goles||0,asist:s.asistencias||0}:null; })
+                  .filter(Boolean).sort((a,b)=>b.goles-a.goles);
                 return (
                   <div style={{ background:"rgba(21,101,192,.04)", border:"1px solid rgba(33,150,243,.1)",
                     borderRadius:10, padding:"10px 12px", marginBottom:4, marginTop:-4 }}>
-                    {/* MVP si existe */}
+
+                    {/* MVP */}
                     {(mvpPl||m.mvp?.nombre) && (
                       <div style={{ display:"flex", alignItems:"center", gap:6, padding:"5px 8px",
                         background:"rgba(212,184,74,.07)", borderRadius:7, marginBottom:8,
                         border:"1px solid rgba(212,184,74,.15)" }}>
                         <span>🏅</span>
                         <span style={{ fontSize:9.5, color:"#d4b84a", fontWeight:600 }}>
-                          {mvpPl?mvpPl.nombre+" "+mvpPl.apellido:(m.mvp?.nombre||"")+" "+(m.mvp?.apellido||"")}
+                          MVP: {mvpPl?mvpPl.nombre+" "+mvpPl.apellido:(m.mvp?.nombre||"")+" "+(m.mvp?.apellido||"")}
                         </span>
                       </div>
                     )}
+
+                    {/* Goleadores */}
+                    {goleadores.length > 0 && (
+                      <div style={{ marginBottom:8 }}>
+                        <div style={{ fontSize:7.5, color:"var(--txt3)", textTransform:"uppercase", letterSpacing:.5, marginBottom:5 }}>⚽ Goleadores</div>
+                        {goleadores.map(({pl,goles,asist},i) => (
+                          <div key={i} style={{ display:"flex", justifyContent:"space-between",
+                            alignItems:"center", padding:"4px 6px", marginBottom:2,
+                            background:"rgba(255,255,255,.02)", borderRadius:6 }}>
+                            <span style={{ fontSize:9.5 }}>{pl.nombre} {pl.apellido}</span>
+                            <span style={{ display:"flex", gap:6, fontSize:9 }}>
+                              <span style={{ color:"#d4b84a" }}>⚽{goles}</span>
+                              {asist>0&&<span style={{ color:"#7ab3e0" }}>🎯{asist}</span>}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
                     {/* Convocados */}
-                    <div style={{ fontSize:7.5, color:"var(--txt3)", textTransform:"uppercase",
-                      letterSpacing:.5, marginBottom:6 }}>
+                    <div style={{ fontSize:7.5, color:"var(--txt3)", textTransform:"uppercase", letterSpacing:.5, marginBottom:5 }}>
                       👥 Convocados ({convPls.length})
                     </div>
                     {convPls.length > 0 ? (
-                      <div style={{ display:"flex", flexWrap:"wrap", gap:5 }}>
+                      <div style={{ display:"flex", flexWrap:"wrap", gap:4 }}>
                         {convPls.map(pl => {
                           const isTitular = attM?.titulares?.map(String).includes(String(pl.id));
-                          const ps = m.playerStats?.[pl.id] || {};
+                          const pls = ps[pl.id] || ps[String(pl.id)] || {};
                           return (
-                            <div key={pl.id} style={{ display:"flex", alignItems:"center", gap:5,
-                              padding:"4px 8px", borderRadius:20, fontSize:9,
+                            <div key={pl.id} style={{ padding:"3px 8px", borderRadius:20, fontSize:8.5,
                               background: isTitular?"rgba(21,101,192,.15)":"rgba(255,255,255,.03)",
-                              border:`1px solid ${isTitular?"rgba(33,150,243,.3)":"rgba(255,255,255,.06)"}` }}>
-                              <span style={{ color: isTitular?"#7ab3e0":"var(--txt3)" }}>
-                                {pl.nombre} {pl.apellido}
-                              </span>
-                              {ps.goles>0 && <span style={{ color:"#d4b84a", fontSize:8 }}>⚽{ps.goles}</span>}
-                              {ps.asistencias>0 && <span style={{ color:"#7ab3e0", fontSize:8 }}>🎯{ps.asistencias}</span>}
+                              border:`1px solid ${isTitular?"rgba(33,150,243,.25)":"rgba(255,255,255,.06)"}`,
+                              color: isTitular?"#7ab3e0":"var(--txt3)" }}>
+                              {pl.nombre} {pl.apellido}
+                              {pls.goles>0&&<span style={{ color:"#d4b84a", marginLeft:4 }}>⚽{pls.goles}</span>}
+                              {pls.asistencias>0&&<span style={{ color:"#7ab3e0", marginLeft:3 }}>🎯{pls.asistencias}</span>}
                             </div>
                           );
                         })}
