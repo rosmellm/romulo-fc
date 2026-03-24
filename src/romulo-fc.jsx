@@ -641,9 +641,25 @@ function ConfirmDialog({ cfg, onClose }) {
 }
 
 // ── Modal Resultado Rápido — igual que live match ────────────────────────────
+// Regla: jugador puede jugar en su cat o en categorías MAYORES (nunca menores)
+function puedeJugarEn(jugador, catPartido) {
+  const orden = ["Sub-11","Sub-13","Sub-15","Sub-17A","Sub-17B","Sub-19"];
+  // Sub-17A y Sub-17B son equivalentes entre sí
+  const normCat = c => c === "Sub-17" ? "Sub-17A" : c;
+  const idxJug  = orden.indexOf(normCat(jugador.cat));
+  const idxPart = orden.indexOf(normCat(catPartido));
+  if (idxJug === -1 || idxPart === -1) return true; // si no reconoce, permitir
+  // Sub-17A puede jugar en Sub-17B y viceversa
+  if (normCat(jugador.cat) === "Sub-17A" && normCat(catPartido) === "Sub-17B") return true;
+  if (normCat(jugador.cat) === "Sub-17B" && normCat(catPartido) === "Sub-17A") return true;
+  // Puede jugar si su categoría es MENOR o IGUAL (subir de categoría sí, bajar no)
+  return idxJug <= idxPart;
+}
+
 function QuickResultModal({ m, players, onClose, onSave }) {
-  const CATS_ORDER = ["Sub-11","Sub-13","Sub-15","Sub-17","Sub-19"];
-  const catPls = [...players].sort((a,b) => {
+  const CATS_ORDER = ["Sub-11","Sub-13","Sub-15","Sub-17A","Sub-17B","Sub-19"];
+  // Solo jugadores que pueden jugar en esta categoría (su cat es ≤ cat del partido)
+  const catPls = [...players].filter(p => puedeJugarEn(p, m.cat)).sort((a,b) => {
     const aPropio = a.cat === m.cat ? 0 : 1;
     const bPropio = b.cat === m.cat ? 0 : 1;
     if (aPropio !== bPropio) return aPropio - bPropio;
@@ -906,8 +922,8 @@ function QuickResultModal({ m, players, onClose, onSave }) {
 
 // ── Modal para editar convocados de un partido ya registrado ────────────────
 function EditConvModal({ m, players, inicialIds, onClose, onSave }) {
-  const CATS_ORDER = ["Sub-11","Sub-13","Sub-15","Sub-17","Sub-19"];
-  const catPls = [...players].sort((a,b) => {
+  const CATS_ORDER = ["Sub-11","Sub-13","Sub-15","Sub-17A","Sub-17B","Sub-19"];
+  const catPls = [...players].filter(p => puedeJugarEn(p, m.cat)).sort((a,b) => {
     const aPropio = a.cat === m.cat ? 0 : 1;
     const bPropio = b.cat === m.cat ? 0 : 1;
     if (aPropio !== bPropio) return aPropio - bPropio;
@@ -5106,28 +5122,83 @@ export default function App() {
 
       // ── CAMPEONATOS / TABLA ──
       if (tab === "campeonatos") {
+        const RONDA_LABEL = { Octavos:"⚔️ Octavos",Cuartos:"⚔️ Cuartos",Semifinal:"🏆 Semifinal",Final:"🥇 Final" };
         return (
           <>
             <div className="st">🏆 {isVisitor ? "Campeonatos" : "Mis Campeonatos"}</div>
             {spChamps.length === 0 && (
               <div className="card"><p style={{ fontSize:9, color:"var(--txt3)", textAlign:"center", padding:10 }}>Sin campeonatos activos</p></div>
             )}
-            {spChamps.map(ch => (
-              <div key={ch.id} className="card" style={{ marginBottom:8 }}>
-                <div className="ch" style={{ marginBottom:8 }}>
-                  <div>
-                    <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:16, letterSpacing:.5 }}>{ch.nombre}</div>
-                    <div style={{ display:"flex", gap:3, flexWrap:"wrap", marginTop:3 }}>
-                      {ch.cats.length>0 ? ch.cats.map(c=><span key={c} className="bg bg-b">{c}</span>) : <span className="bg bg-n">Todas</span>}
+            {spChamps.map(ch => {
+              const esElim = ch.fase === "eliminatoria";
+              const llaves = ch.llaves || [];
+              const rondas = [...new Set(llaves.map(l=>l.ronda))];
+              return (
+                <div key={ch.id} className="card" style={{ marginBottom:8 }}>
+                  <div className="ch" style={{ marginBottom:8 }}>
+                    <div>
+                      <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:16, letterSpacing:.5 }}>{ch.nombre}</div>
+                      <div style={{ display:"flex", gap:3, flexWrap:"wrap", marginTop:3 }}>
+                        {ch.cats.length>0 ? ch.cats.map(c=><span key={c} className="bg bg-b">{c}</span>) : <span className="bg bg-n">Todas</span>}
+                        <span className={"bg "+(esElim?"bg-y":"bg-b")}>{esElim?"⚔️ Eliminatoria":"📊 Grupos"}</span>
+                      </div>
                     </div>
+                    {ch.link && <button className="btn-wa" onClick={()=>window.open(ch.link,"_blank")}>🌐 Oficial</button>}
                   </div>
-                  {ch.link && (
-                    <button className="btn-wa" onClick={() => window.open(ch.link,"_blank")}>🌐 Oficial</button>
+
+                  {/* BRACKET eliminatoria */}
+                  {esElim && rondas.length > 0 && (
+                    <div style={{ overflowX:"auto" }}>
+                      <div style={{ display:"flex", gap:12, minWidth: rondas.length*160 }}>
+                        {rondas.map(ronda => {
+                          const partRonda = llaves.filter(l=>l.ronda===ronda);
+                          return (
+                            <div key={ronda} style={{ flex:1, minWidth:140 }}>
+                              <div style={{ fontSize:8, color:"#d4b84a", textTransform:"uppercase",
+                                letterSpacing:.5, textAlign:"center", marginBottom:6, fontWeight:600 }}>
+                                {RONDA_LABEL[ronda]||ronda}
+                              </div>
+                              <div style={{ display:"flex", flexDirection:"column",
+                                gap: ronda==="Final"?0:8, justifyContent:"space-around", height:"100%" }}>
+                                {partRonda.map((l,i) => (
+                                  <div key={l.id||i} style={{ background:"rgba(21,101,192,.08)",
+                                    border:"1px solid rgba(33,150,243,.15)", borderRadius:8, overflow:"hidden" }}>
+                                    {[{eq:l.equipoA,sc:l.scoreA},{eq:l.equipoB,sc:l.scoreB}].map((t,ti)=>{
+                                      const ganador = l.scoreA!=null&&l.scoreB!=null
+                                        ? (ti===0?l.scoreA>l.scoreB:l.scoreB>l.scoreA) : false;
+                                      return (
+                                        <div key={ti} style={{ display:"flex", justifyContent:"space-between",
+                                          alignItems:"center", padding:"5px 8px",
+                                          borderBottom: ti===0?"1px solid rgba(33,150,243,.1)":"none",
+                                          background: ganador?"rgba(21,101,192,.15)":"transparent" }}>
+                                          <span style={{ fontSize:9, fontWeight:ganador?700:400,
+                                            color:ganador?"#7ab3e0":"var(--txt)", flex:1,
+                                            whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
+                                            {t.eq||"Por definir"}
+                                          </span>
+                                          <span style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:14,
+                                            color:ganador?"#7ab3e0":"var(--txt3)", marginLeft:6, minWidth:16,
+                                            textAlign:"center" }}>
+                                            {t.sc??"-"}
+                                          </span>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
                   )}
+
+                  {/* Tabla de grupos */}
+                  {!esElim && <MiniStandings ch={ch} />}
                 </div>
-                <MiniStandings ch={ch} />
-              </div>
-            ))}
+              );
+            })}
           </>
         );
       }
@@ -11769,8 +11840,74 @@ export default function App() {
             <div style={{ display:"flex", gap:8 }}>
               <button className="btn" style={{ flex:1, background:"rgba(183,28,28,.2)", borderColor:"rgba(183,28,28,.4)", color:"#ef9a9a" }}
                 onClick={() => {
-                  safeDeleteDoc(doc(db, "matches", confirmDelM.id));
-                  addNotif("🗑️ Partido eliminado: " + confirmDelM.home + " vs " + confirmDelM.away, "calendario", "cat:"+(confirmDelM.cat||"all"), "partido");
+                  const dm = confirmDelM;
+                  // Solo revertir stats si el partido estaba finalizado
+                  if (dm.status === "finalizado") {
+                    // Buscar convocados: att_matches → playerStats con stats reales
+                    const attM = attMatches.find(a => String(a.matchId)===String(dm.id));
+                    const ps   = dm.playerStats || {};
+                    const convIds = attM?.convocados?.length > 0
+                      ? attM.convocados.map(String)
+                      : Object.entries(ps).filter(([,s])=>(s.goles||0)>0||(s.asistencias||0)>0).map(([id])=>String(id));
+
+                    convIds.forEach(pid => {
+                      const pl = players.find(x => String(x.id)===String(pid));
+                      if (!pl) return;
+                      const psStat = ps[String(pid)] || {};
+                      const cur    = pl.stats || {goles:0,asistencias:0,partidos:0};
+                      safeSetDoc(doc(db,"players",String(pid)), { ...pl, stats: {
+                        goles:       Math.max(0,(cur.goles||0)-(psStat.goles||0)),
+                        asistencias: Math.max(0,(cur.asistencias||0)-(psStat.asistencias||0)),
+                        partidos:    Math.max(0,(cur.partidos||0)-1),
+                      }});
+                      // Revertir tarjetas
+                      const evs = (dm.events||[]).filter(e=>
+                        (e.type==="y_us"||e.type==="r_us") && e.txt?.includes(pl.nombre)
+                      );
+                      if (evs.length > 0) {
+                        const sc = sanc[pid] || {yellows:0,reds:0,suspended:false};
+                        const amarillas = evs.filter(e=>e.type==="y_us").length;
+                        const rojas     = evs.filter(e=>e.type==="r_us").length;
+                        safeSetDoc(doc(db,"sanc",String(pid)), {
+                          ...sc,
+                          yellows: Math.max(0,(sc.yellows||0)-amarillas),
+                          reds:    Math.max(0,(sc.reds||0)-rojas),
+                          suspended: rojas > 0 ? false : sc.suspended,
+                        });
+                      }
+                    });
+
+                    // Revertir tabla de posiciones del campeonato
+                    if (dm.champId && dm.fase === "Normal") {
+                      const ch = champs.find(x=>String(x.id)===String(dm.champId));
+                      if (ch && ch.standings) {
+                        const gH = parseInt(dm.scoreH)||0, gA = parseInt(dm.scoreA)||0;
+                        const winH=gH>gA, winA=gA>gH, draw=gH===gA;
+                        const standings = JSON.parse(JSON.stringify(ch.standings));
+                        function revertRow(equipo, gf, gc, win, dr) {
+                          const row = standings.find(s=>s.equipo===equipo);
+                          if (!row) return;
+                          row.pj = Math.max(0,row.pj-1);
+                          row.gf = Math.max(0,row.gf-gf);
+                          row.gc = Math.max(0,row.gc-gc);
+                          if(win){row.g=Math.max(0,row.g-1);row.pts=Math.max(0,row.pts-3);}
+                          else if(dr){row.e=Math.max(0,row.e-1);row.pts=Math.max(0,row.pts-1);}
+                          else{row.p=Math.max(0,row.p-1);}
+                          row.dg=row.gf-row.gc;
+                        }
+                        revertRow(dm.home,gH,gA,winH,draw);
+                        revertRow(dm.away,gA,gH,winA,draw);
+                        standings.sort((a,b)=>b.pts-a.pts||b.dg-a.dg||b.gf-a.gf);
+                        safeSetDoc(doc(db,"champs",String(dm.champId)),{...ch,standings});
+                      }
+                    }
+
+                    // Eliminar att_matches si existe
+                    safeDeleteDoc(doc(db,"att_matches","matt_"+dm.id));
+                  }
+
+                  safeDeleteDoc(doc(db, "matches", String(dm.id)));
+                  addNotif("🗑️ Partido eliminado: " + dm.home + " vs " + dm.away, "calendario", "cat:"+(dm.cat||"all"), "partido");
                   setConfirmDelM(null);
                 }}>
                 🗑️ Eliminar
