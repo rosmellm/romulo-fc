@@ -11211,74 +11211,54 @@ export default function App() {
 
       {/* ── MODAL DETALLE DE PARTIDO ── */}
       {matchDetail && (() => {
-        const m = matchDetail;
-        const catPls = players.filter(p => p.cat === m.cat);
-        const ps = m.playerStats || {};
+        const m   = matchDetail;
+        const ps  = m.playerStats || {};
         const evs = m.events || [];
+        const attM = attMatches.find(a => String(a.matchId)===String(m.id));
 
-        // Goleadores RFC
-        const goleadores = Object.entries(ps)
-          .filter(([,s]) => s.goles > 0)
-          .map(([pid,s]) => {
-            const pl = players.find(x => String(x.id) === String(pid));
-            return pl ? { nombre: pl.nombre+" "+pl.apellido, goles: s.goles, asist: s.asistencias||0 } : null;
-          }).filter(Boolean)
-          .sort((a,b) => b.goles - a.goles);
+        // Convocados reales: att_matches → playerStats con stats reales → vacío
+        const convIds = attM?.convocados?.length > 0
+          ? attM.convocados.map(String)
+          : Object.entries(ps).filter(([,s])=>(s.goles||0)>0||(s.asistencias||0)>0).map(([id])=>String(id));
+        const convPls = convIds.map(id=>players.find(p=>String(p.id)===id)).filter(Boolean);
 
-        // Asistencias
-        const asistentes = Object.entries(ps)
-          .filter(([,s]) => s.asistencias > 0)
-          .map(([pid,s]) => {
-            const pl = players.find(x => String(x.id) === String(pid));
-            return pl ? { nombre: pl.nombre+" "+pl.apellido, asist: s.asistencias } : null;
-          }).filter(Boolean);
-
-        // Tarjetas
-        const amarillas = evs.filter(e => e.type === "y_us").map(e => e.txt.replace(" tarjeta amarilla",""));
-        const rojas     = evs.filter(e => e.type === "r_us").map(e => e.txt.replace(" tarjeta roja",""));
-
-        // MVP
-        const mvpPl = m.mvp?.playerId ? players.find(x => String(x.id) === String(m.mvp.playerId)) : null;
-
-        // Resultado
+        const goleadores = convPls.filter(pl=>(ps[pl.id]?.goles||0)>0)
+          .map(pl=>({pl, goles:ps[pl.id].goles, asist:ps[pl.id].asistencias||0}))
+          .sort((a,b)=>b.goles-a.goles);
+        const amarillas = evs.filter(e=>e.type==="y_us").map(e=>e.txt.replace(" tarjeta amarilla",""));
+        const rojas     = evs.filter(e=>e.type==="r_us").map(e=>e.txt.replace(" tarjeta roja",""));
+        const mvpPl = m.mvp?.playerId ? players.find(x=>String(x.id)===String(m.mvp.playerId)) : null;
         const esCasa = (m.home||"").includes("Rómulo");
-        const gRFC   = esCasa ? m.scoreH : m.scoreA;
-        const gRiv   = esCasa ? m.scoreA : m.scoreH;
-        const res    = gRFC > gRiv ? "VICTORIA" : gRFC < gRiv ? "DERROTA" : "EMPATE";
+        const gRFC = esCasa?m.scoreH:m.scoreA, gRiv = esCasa?m.scoreA:m.scoreH;
+        const res    = gRFC>gRiv?"VICTORIA":gRFC<gRiv?"DERROTA":"EMPATE";
         const resCol = res==="VICTORIA"?"#4caf50":res==="DERROTA"?"#E53935":"#d4b84a";
 
         return (
           <div className="ov" onClick={e=>{ if(e.target.className==="ov") setMatchDetail(null); }}>
-            <div className="modal" style={{ borderTop:"3px solid "+resCol }}>
+            <div className="modal" style={{ borderTop:"3px solid "+resCol, maxHeight:"92vh", overflowY:"auto" }}>
               <div className="mt2" style={{ color:resCol }}>
                 📊 Resumen del Partido
                 <span className="mx" onClick={()=>setMatchDetail(null)}>✕</span>
               </div>
 
-              {/* Marcador grande */}
+              {/* Marcador */}
               <div style={{ textAlign:"center", padding:"12px 0 8px",
                 background:"rgba(21,101,192,.06)", borderRadius:10, marginBottom:12 }}>
                 <div style={{ fontSize:9, color:"var(--txt3)", marginBottom:4, textTransform:"uppercase", letterSpacing:1 }}>
                   {m.cat} · {m.date}
                 </div>
                 <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:12 }}>
-                  <div style={{ flex:1, textAlign:"right" }}>
-                    <div style={{ fontSize:9, color:"var(--txt2)", marginBottom:2 }}>{m.home}</div>
-                  </div>
+                  <div style={{ flex:1, textAlign:"right", fontSize:9, color:"var(--txt2)" }}>{m.home}</div>
                   <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:42, color:resCol, lineHeight:1 }}>
-                    {m.scoreH ?? "—"} <span style={{ fontSize:24, color:"var(--txt3)" }}>-</span> {m.scoreA ?? "—"}
+                    {m.scoreH??"—"} <span style={{ fontSize:24, color:"var(--txt3)" }}>-</span> {m.scoreA??"—"}
                   </div>
-                  <div style={{ flex:1, textAlign:"left" }}>
-                    <div style={{ fontSize:9, color:"#e8a0a0", marginBottom:2 }}>{m.away}</div>
-                  </div>
+                  <div style={{ flex:1, textAlign:"left", fontSize:9, color:"#e8a0a0" }}>{m.away}</div>
                 </div>
-                <div style={{ fontSize:11, fontWeight:700, color:resCol, marginTop:4, letterSpacing:1 }}>
-                  {res}
-                </div>
+                <div style={{ fontSize:11, fontWeight:700, color:resCol, marginTop:4, letterSpacing:1 }}>{res}</div>
               </div>
 
               {/* MVP */}
-              {(mvpPl || m.mvp?.nombre) && (
+              {(mvpPl||m.mvp?.nombre) && (
                 <div style={{ display:"flex", alignItems:"center", gap:10, padding:"8px 10px",
                   background:"rgba(212,184,74,.08)", borderRadius:8, marginBottom:10,
                   border:"1px solid rgba(212,184,74,.2)" }}>
@@ -11286,7 +11266,7 @@ export default function App() {
                   <div>
                     <div style={{ fontSize:7.5, color:"#d4b84a", textTransform:"uppercase", letterSpacing:.5 }}>MVP</div>
                     <div style={{ fontSize:11, fontWeight:600, color:"#d4b84a" }}>
-                      {mvpPl ? mvpPl.nombre+" "+mvpPl.apellido : m.mvp?.nombre+" "+(m.mvp?.apellido||"")}
+                      {mvpPl?mvpPl.nombre+" "+mvpPl.apellido:m.mvp?.nombre+" "+(m.mvp?.apellido||"")}
                     </div>
                   </div>
                 </div>
@@ -11295,31 +11275,14 @@ export default function App() {
               {/* Goleadores */}
               {goleadores.length > 0 && (
                 <div style={{ marginBottom:10 }}>
-                  <div style={{ fontSize:8, color:"var(--txt3)", textTransform:"uppercase",
-                    letterSpacing:.5, marginBottom:6 }}>⚽ Goleadores</div>
-                  {goleadores.map((g,i) => (
+                  <div style={{ fontSize:8, color:"var(--txt3)", textTransform:"uppercase", letterSpacing:.5, marginBottom:6 }}>⚽ Goleadores</div>
+                  {goleadores.map(({pl,goles,asist},i) => (
                     <div key={i} style={{ display:"flex", justifyContent:"space-between",
                       padding:"5px 8px", background:"rgba(255,255,255,.02)", borderRadius:6, marginBottom:3 }}>
-                      <span style={{ fontSize:10 }}>{g.nombre}</span>
-                      <span style={{ fontSize:10, color:"#d4b84a", fontFamily:"'Bebas Neue',sans-serif" }}>
-                        {g.goles} {g.goles > 1 ? "goles" : "gol"}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Asistencias */}
-              {asistentes.length > 0 && (
-                <div style={{ marginBottom:10 }}>
-                  <div style={{ fontSize:8, color:"var(--txt3)", textTransform:"uppercase",
-                    letterSpacing:.5, marginBottom:6 }}>🎯 Asistencias</div>
-                  {asistentes.map((a,i) => (
-                    <div key={i} style={{ display:"flex", justifyContent:"space-between",
-                      padding:"5px 8px", background:"rgba(255,255,255,.02)", borderRadius:6, marginBottom:3 }}>
-                      <span style={{ fontSize:10 }}>{a.nombre}</span>
-                      <span style={{ fontSize:10, color:"#7ab3e0", fontFamily:"'Bebas Neue',sans-serif" }}>
-                        {a.asist} {a.asist > 1 ? "asist." : "asist."}
+                      <span style={{ fontSize:10 }}>{pl.nombre} {pl.apellido}</span>
+                      <span style={{ display:"flex", gap:6, fontSize:10 }}>
+                        <span style={{ color:"#d4b84a", fontFamily:"'Bebas Neue',sans-serif" }}>{goles} {goles>1?"goles":"gol"}</span>
+                        {asist>0&&<span style={{ color:"#7ab3e0" }}>🎯{asist}</span>}
                       </span>
                     </div>
                   ))}
@@ -11327,61 +11290,51 @@ export default function App() {
               )}
 
               {/* Tarjetas */}
-              {(amarillas.length > 0 || rojas.length > 0) && (
+              {(amarillas.length>0||rojas.length>0) && (
                 <div style={{ marginBottom:10 }}>
-                  <div style={{ fontSize:8, color:"var(--txt3)", textTransform:"uppercase",
-                    letterSpacing:.5, marginBottom:6 }}>🟨 Disciplina</div>
-                  {amarillas.map((n,i) => (
-                    <div key={"y"+i} style={{ display:"flex", alignItems:"center", gap:6,
-                      padding:"4px 8px", marginBottom:3 }}>
-                      <span style={{ fontSize:12 }}>🟨</span>
-                      <span style={{ fontSize:9.5 }}>{n}</span>
-                    </div>
-                  ))}
-                  {rojas.map((n,i) => (
-                    <div key={"r"+i} style={{ display:"flex", alignItems:"center", gap:6,
-                      padding:"4px 8px", marginBottom:3 }}>
-                      <span style={{ fontSize:12 }}>🟥</span>
-                      <span style={{ fontSize:9.5 }}>{n}</span>
-                    </div>
-                  ))}
+                  <div style={{ fontSize:8, color:"var(--txt3)", textTransform:"uppercase", letterSpacing:.5, marginBottom:6 }}>🟨 Disciplina</div>
+                  {amarillas.map((n,i)=><div key={"y"+i} style={{ display:"flex", alignItems:"center", gap:6, padding:"4px 8px", marginBottom:3 }}><span style={{ fontSize:12 }}>🟨</span><span style={{ fontSize:9.5 }}>{n}</span></div>)}
+                  {rojas.map((n,i)=><div key={"r"+i} style={{ display:"flex", alignItems:"center", gap:6, padding:"4px 8px", marginBottom:3 }}><span style={{ fontSize:12 }}>🟥</span><span style={{ fontSize:9.5 }}>{n}</span></div>)}
                 </div>
               )}
 
-              {/* Todos los jugadores con sus stats */}
-              {Object.keys(ps).length > 0 && (
-                <div style={{ marginBottom:10 }}>
-                  <div style={{ fontSize:8, color:"var(--txt3)", textTransform:"uppercase",
-                    letterSpacing:.5, marginBottom:6 }}>👥 Estadísticas individuales</div>
-                  {catPls.filter(pl => ps[pl.id]).map(pl => {
-                    const s = ps[pl.id] || {};
-                    return (
-                      <div key={pl.id} style={{ display:"flex", alignItems:"center", gap:8,
-                        padding:"6px 8px", background:"rgba(255,255,255,.02)", borderRadius:6, marginBottom:3 }}>
-                        <div style={{ width:26, height:26, borderRadius:"50%",
-                          background:"rgba(21,101,192,.2)", display:"flex", alignItems:"center",
-                          justifyContent:"center", fontSize:10, fontWeight:700, color:"#7ab3e0", flexShrink:0 }}>
-                          {pl.nombre[0]}
+              {/* Convocados */}
+              <div style={{ marginBottom:10 }}>
+                <div style={{ fontSize:8, color:"var(--txt3)", textTransform:"uppercase", letterSpacing:.5, marginBottom:6 }}>
+                  👥 Convocados ({convPls.length})
+                </div>
+                {convPls.length > 0 ? (
+                  <div style={{ display:"flex", flexWrap:"wrap", gap:4 }}>
+                    {convPls.map(pl => {
+                      const s = ps[pl.id]||{};
+                      return (
+                        <div key={pl.id} style={{ padding:"3px 8px", borderRadius:20, fontSize:8.5,
+                          background:"rgba(21,101,192,.1)", border:"1px solid rgba(33,150,243,.2)",
+                          color:"#7ab3e0" }}>
+                          {pl.nombre} {pl.apellido}
+                          {s.goles>0&&<span style={{ color:"#d4b84a", marginLeft:3 }}>⚽{s.goles}</span>}
+                          {s.asistencias>0&&<span style={{ color:"#7ab3e0", marginLeft:2 }}>🎯{s.asistencias}</span>}
                         </div>
-                        <div style={{ flex:1, fontSize:9.5 }}>{pl.nombre} {pl.apellido}</div>
-                        <div style={{ display:"flex", gap:6, fontSize:9 }}>
-                          {s.goles > 0 && <span style={{ color:"#d4b84a" }}>⚽{s.goles}</span>}
-                          {s.asistencias > 0 && <span style={{ color:"#7ab3e0" }}>🎯{s.asistencias}</span>}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div style={{ fontSize:8.5, color:"var(--txt3)", textAlign:"center", padding:"4px 0" }}>
+                    Sin convocados registrados
+                  </div>
+                )}
+              </div>
+
+              {/* Botón editar convocados — solo admin/entrenador */}
+              {can("partido") && (
+                <button className="btn-sm" style={{ width:"100%", marginBottom:8, fontSize:8.5,
+                  background:"rgba(212,184,74,.08)", borderColor:"rgba(212,184,74,.2)", color:"#d4b84a" }}
+                  onClick={()=>{ setEditConvModal(m); setMatchDetail(null); }}>
+                  ✏️ Editar quiénes jugaron
+                </button>
               )}
 
-              {/* Si no hay datos */}
-              {goleadores.length===0 && asistentes.length===0 && Object.keys(ps).length===0 && (
-                <div style={{ textAlign:"center", padding:"12px 0", fontSize:9, color:"var(--txt3)" }}>
-                  No hay estadísticas detalladas registradas para este partido
-                </div>
-              )}
-
-              <button className="btn-sm" style={{ width:"100%", marginTop:4 }}
+              <button className="btn-sm" style={{ width:"100%" }}
                 onClick={()=>setMatchDetail(null)}>
                 Cerrar
               </button>
