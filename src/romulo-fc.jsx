@@ -11,12 +11,12 @@ const _mesIdx    = _hoyPago.getDate() >= 16 ? _hoyPago.getMonth() : _hoyPago.get
 const ACTIVE_MONTHS = MONTHS.slice(0, Math.max(1, _mesIdx + 1));
 // Mes actual de cobro (el último mes activo)
 const MES_COBRO = ACTIVE_MONTHS[ACTIVE_MONTHS.length - 1];
-const CATS   = ["Sub-11","Sub-13","Sub-15","Sub-17A","Sub-17B","Sub-19"];
+const CATS   = ["Sub-11","Sub-13","Sub-15","Sub-17","Sub-19"];
 
 // Rangos de edad por categoría — se actualizan automáticamente cada año
 // Base: 2026 → Sub-11: 2016-2017, Sub-13: 2014-2015, Sub-15: 2012-2013, Sub-17: 2010-2011, Sub-19: 2008-2009
 const BASE_YEAR = 2026;
-const BASE_RANGES = { "Sub-11":[2016,2017], "Sub-13":[2014,2015], "Sub-15":[2012,2013], "Sub-17A":[2010,2011], "Sub-17B":[2010,2011], "Sub-19":[2008,2009] };
+const BASE_RANGES = { "Sub-11":[2016,2017], "Sub-13":[2014,2015], "Sub-15":[2012,2013], "Sub-17":[2010,2011], "Sub-19":[2008,2009] };
 function getCatRanges() {
   const diff = new Date().getFullYear() - BASE_YEAR;
   const ranges = {};
@@ -30,7 +30,7 @@ function getCatByYear(anio) {
   for (const [cat,[min,max]] of Object.entries(CAT_RANGES)) {
     if (anio >= min && anio <= max) {
       // Para Sub-17, devolver Sub-17A por defecto
-      if (cat === "Sub-17A" || cat === "Sub-17B") return "Sub-17A";
+      return cat;
       return cat;
     }
   }
@@ -39,7 +39,7 @@ function getCatByYear(anio) {
 
 const CAT_COLOR = {
   "Sub-11":"#1565C0","Sub-13":"#0D47A1","Sub-15":"#1976D2",
-  "Sub-17A":"#1E88E5","Sub-17B":"#1565C0","Sub-19":"#2196F3"
+  "Sub-17":"#1E88E5","Sub-19":"#2196F3"
 };
 
 // Coaches — vienen 100% de Firebase, sin defaults hardcoded
@@ -642,7 +642,7 @@ function ConfirmDialog({ cfg, onClose }) {
 
 // ── Modal Resultado Rápido — igual que live match ────────────────────────────
 function QuickResultModal({ m, players, onClose, onSave }) {
-  const CATS_ORDER = ["Sub-11","Sub-13","Sub-15","Sub-17A","Sub-17B","Sub-19"];
+  const CATS_ORDER = ["Sub-11","Sub-13","Sub-15","Sub-17","Sub-19"];
   const catPls = [...players].sort((a,b) => {
     const aPropio = a.cat === m.cat ? 0 : 1;
     const bPropio = b.cat === m.cat ? 0 : 1;
@@ -906,7 +906,7 @@ function QuickResultModal({ m, players, onClose, onSave }) {
 
 // ── Modal para editar convocados de un partido ya registrado ────────────────
 function EditConvModal({ m, players, inicialIds, onClose, onSave }) {
-  const CATS_ORDER = ["Sub-11","Sub-13","Sub-15","Sub-17A","Sub-17B","Sub-19"];
+  const CATS_ORDER = ["Sub-11","Sub-13","Sub-15","Sub-17","Sub-19"];
   const catPls = [...players].sort((a,b) => {
     const aPropio = a.cat === m.cat ? 0 : 1;
     const bPropio = b.cat === m.cat ? 0 : 1;
@@ -1656,7 +1656,7 @@ function LiveMatch({ match, myPlayers, sanctions, setSanctions, onClose, onSave,
 
             {/* ── Filtro por categoría ── */}
             <div style={{ display:"flex", gap:4, flexWrap:"wrap", marginBottom:6 }}>
-              {["Todas","Sub-11","Sub-13","Sub-15","Sub-17A","Sub-17B","Sub-19"].map(cat => (
+              {["Todas","Sub-11","Sub-13","Sub-15","Sub-17","Sub-19"].map(cat => (
                 <button key={cat}
                   onClick={() => setConvCatF(cat)}
                   className={"btn-sm"}
@@ -2955,7 +2955,7 @@ export default function App() {
       const DP = [
         { id:9001, nombre:"Carlos",   apellido:"Rodríguez", cat:"Sub-15", num:10, tel:"04140000001", repNombre:"Pedro",  repApellido:"Rodríguez", repTel:"04140000002", repCedula:"V-99000001", cedula:"V-88000001", dob:"2010-03-15", foto:null, stats:{ goles:8, asistencias:5, partidos:12 }, subequipo:"A", talla:"M", tipoSangre:"O+", contactoEmergencia:"Pedro Rodríguez 04140000002", eval:{ velocidad:8, tecnica:9, tactica:7, fisico:8, actitud:9, trabajo:9 } },
         { id:9002, nombre:"Andrés",   apellido:"Martínez",  cat:"Sub-13", num:7,  tel:"04140000003", repNombre:"Ana",    repApellido:"Martínez",  repTel:"04140000004", repCedula:"V-99000003", cedula:"V-88000003", dob:"2012-06-22", foto:null, stats:{ goles:4, asistencias:7, partidos:10 }, subequipo:"B", talla:"S", tipoSangre:"A+", contactoEmergencia:"Ana Martínez 04140000004",    eval:{ velocidad:7, tecnica:8, tactica:8, fisico:6, actitud:8, trabajo:9 } },
-        { id:9003, nombre:"Luis",     apellido:"García",    cat:"Sub-17A", num:1,  tel:"04140000005", repNombre:"María",  repApellido:"García",    repTel:"04140000006", repCedula:"V-99000005", cedula:"V-88000005", dob:"2008-11-08", foto:null, stats:{ goles:0, asistencias:2, partidos:14 }, subequipo:"A", talla:"L", tipoSangre:"B+", contactoEmergencia:"María García 04140000006",   eval:{ velocidad:6, tecnica:7, tactica:9, fisico:9, actitud:7, trabajo:8 } },
+        { id:9003, nombre:"Luis",     apellido:"García",    cat:"Sub-17", num:1,  tel:"04140000005", repNombre:"María",  repApellido:"García",    repTel:"04140000006", repCedula:"V-99000005", cedula:"V-88000005", dob:"2008-11-08", foto:null, stats:{ goles:0, asistencias:2, partidos:14 }, subequipo:"A", talla:"L", tipoSangre:"B+", contactoEmergencia:"María García 04140000006",   eval:{ velocidad:6, tecnica:7, tactica:9, fisico:9, actitud:7, trabajo:8 } },
         { id:9004, nombre:"Miguel",   apellido:"Torres",    cat:"Sub-15", num:5,  tel:"04140000007", repNombre:"Jorge",  repApellido:"Torres",    repTel:"04140000008", repCedula:"V-99000007", cedula:"V-88000007", dob:"2010-08-20", foto:null, stats:{ goles:5, asistencias:3, partidos:11 }, subequipo:"A", talla:"M", tipoSangre:"AB+", contactoEmergencia:"Jorge Torres 04140000008",  eval:{ velocidad:9, tecnica:7, tactica:6, fisico:9, actitud:8, trabajo:7 } },
         { id:9005, nombre:"Gabriela", apellido:"Vega",      cat:"Sub-11", num:3,  tel:"04140000009", repNombre:"Carmen", repApellido:"Vega",      repTel:"04140000010", repCedula:"V-99000009", cedula:"V-88000009", dob:"2014-01-10", foto:null, stats:{ goles:2, asistencias:4, partidos:8  }, subequipo:"B", talla:"XS", tipoSangre:"O-", contactoEmergencia:"Carmen Vega 04140000010",   eval:{ velocidad:7, tecnica:6, tactica:5, fisico:6, actitud:10, trabajo:9 } },
       ];
@@ -2965,7 +2965,7 @@ export default function App() {
         { id:8003, home:"Rómulo FC", away:"Carabobo FC Sub-15", date:"28 Mar 2026", time:"09:00", cat:"Sub-15", field:"Campo A", status:"próximo", scoreH:null, scoreA:null, fase:"Normal" },
         { id:8004, home:"Rómulo FC", away:"Escuela Cruz Diez",  date:"08 Mar 2026", time:"11:00", cat:"Sub-13", field:"Campo C", status:"finalizado", scoreH:2, scoreA:0, fase:"Normal", playerStats:{ 9002:{ goles:1, asistencias:1 } }, mvp:{ playerId:9002, nombre:"Andrés", apellido:"Martínez" } },
         { id:8005, home:"Rómulo FC", away:"Mineros de Guayana", date:"25 Mar 2026", time:"16:00", cat:"Sub-13", field:"Campo B", status:"próximo", scoreH:null, scoreA:null, fase:"Normal" },
-        { id:8006, home:"Rómulo FC", away:"Deportivo Lara",     date:"01 Mar 2026", time:"10:00", cat:"Sub-17A", field:"Campo A", status:"finalizado", scoreH:0, scoreA:2, fase:"Normal", playerStats:{ 9003:{ goles:0, asistencias:0 } }, mvp:null },
+        { id:8006, home:"Rómulo FC", away:"Deportivo Lara",     date:"01 Mar 2026", time:"10:00", cat:"Sub-17", field:"Campo A", status:"finalizado", scoreH:0, scoreA:2, fase:"Normal", playerStats:{ 9003:{ goles:0, asistencias:0 } }, mvp:null },
       ];
       const DPAY = {
         9001: { id:9001, months:{ Ene:{ paid:true, monto:"30", metodo:"Efectivo Bs.", date:"05 Ene" }, Feb:{ paid:true, monto:"30", metodo:"Zelle", date:"03 Feb" }, Mar:{ paid:false } }, history:[], arbitraje:[] },
@@ -3012,7 +3012,7 @@ export default function App() {
     // Jugadores
     unsubs.push(onSnapshot(collection(db, "players"), snap => {
       // Usar docChanges para actualizaciones incrementales
-      const data = snap.docs.map(d => ({ ...d.data(), id: d.id }));
+      const data = snap.docs.map(d => { const p={...d.data(),id:d.id}; if(p.cat==="Sub-17A"||p.cat==="Sub-17B") p.cat="Sub-17"; return p; });
       setPlayers(data);
       // Inicializar pay/sanc/att para jugadores nuevos
       setPay(prev => {
@@ -3933,7 +3933,7 @@ export default function App() {
       const cat = cols[idx("categoria")] || "Sub-11";
       const normCat = cat.toLowerCase().replace("-","").replace(" ","");
       const validCat = CATS.find(c => c.toLowerCase().replace("-","").replace(" ","") === normCat)
-        || (normCat.startsWith("sub17") ? "Sub-17A" : "Sub-11");
+        || (normCat.startsWith("sub17") ? "Sub-17" : "Sub-11");
       players.push({
         nombre: cols[idx("nombre")] || "",
         apellido: cols[idx("apellido")] || "",
@@ -4132,7 +4132,7 @@ export default function App() {
     // Todos los jugadores pueden ser convocados en cualquier partido.
     // Su categoría de registro no cambia — solo se separan sus stats.
     // Primero aparecen los de la categoría del partido, luego el resto ordenados por categoría.
-    const CATS_ORDER = ["Sub-11","Sub-13","Sub-15","Sub-17A","Sub-17B","Sub-19"];
+    const CATS_ORDER = ["Sub-11","Sub-13","Sub-15","Sub-17","Sub-19"];
     const myPlayers = [...players].sort((a,b) => {
       const aPropio = a.cat === liveM.cat ? 0 : 1;
       const bPropio = b.cat === liveM.cat ? 0 : 1;
@@ -4416,7 +4416,7 @@ export default function App() {
               const DEMO_PLAYERS = [
                 { id:9001, nombre:"Carlos",   apellido:"Rodríguez", cat:"Sub-15", num:10, tel:"04140000001", repNombre:"Pedro",  repApellido:"Rodríguez", repTel:"04140000002", repCedula:"V-99000001", cedula:"V-88000001", dob:"2010-03-15", foto:null, stats:{ goles:8, asistencias:5, partidos:12 }, subequipo:"A", talla:"M", tipoSangre:"O+", contactoEmergencia:"Pedro Rodríguez 04140000002", eval:{ velocidad:8, tecnica:9, tactica:7, fisico:8, actitud:9, trabajo:9 } },
                 { id:9002, nombre:"Andrés",   apellido:"Martínez",  cat:"Sub-13", num:7,  tel:"04140000003", repNombre:"Ana",    repApellido:"Martínez",  repTel:"04140000004", repCedula:"V-99000003", cedula:"V-88000003", dob:"2012-06-22", foto:null, stats:{ goles:4, asistencias:7, partidos:10 }, subequipo:"B", talla:"S", tipoSangre:"A+", contactoEmergencia:"Ana Martínez 04140000004",    eval:{ velocidad:7, tecnica:8, tactica:8, fisico:6, actitud:8, trabajo:9 } },
-                { id:9003, nombre:"Luis",     apellido:"García",    cat:"Sub-17A", num:1,  tel:"04140000005", repNombre:"María",  repApellido:"García",    repTel:"04140000006", repCedula:"V-99000005", cedula:"V-88000005", dob:"2008-11-08", foto:null, stats:{ goles:0, asistencias:2, partidos:14 }, subequipo:"A", talla:"L", tipoSangre:"B+", contactoEmergencia:"María García 04140000006",   eval:{ velocidad:6, tecnica:7, tactica:9, fisico:9, actitud:7, trabajo:8 } },
+                { id:9003, nombre:"Luis",     apellido:"García",    cat:"Sub-17", num:1,  tel:"04140000005", repNombre:"María",  repApellido:"García",    repTel:"04140000006", repCedula:"V-99000005", cedula:"V-88000005", dob:"2008-11-08", foto:null, stats:{ goles:0, asistencias:2, partidos:14 }, subequipo:"A", talla:"L", tipoSangre:"B+", contactoEmergencia:"María García 04140000006",   eval:{ velocidad:6, tecnica:7, tactica:9, fisico:9, actitud:7, trabajo:8 } },
                 { id:9004, nombre:"Miguel",   apellido:"Torres",    cat:"Sub-15", num:5,  tel:"04140000007", repNombre:"Jorge",  repApellido:"Torres",    repTel:"04140000008", repCedula:"V-99000007", cedula:"V-88000007", dob:"2010-08-20", foto:null, stats:{ goles:5, asistencias:3, partidos:11 }, subequipo:"A", talla:"M", tipoSangre:"AB+", contactoEmergencia:"Jorge Torres 04140000008",  eval:{ velocidad:9, tecnica:7, tactica:6, fisico:9, actitud:8, trabajo:7 } },
                 { id:9005, nombre:"Gabriela", apellido:"Vega",      cat:"Sub-11", num:3,  tel:"04140000009", repNombre:"Carmen", repApellido:"Vega",      repTel:"04140000010", repCedula:"V-99000009", cedula:"V-88000009", dob:"2014-01-10", foto:null, stats:{ goles:2, asistencias:4, partidos:8  }, subequipo:"B", talla:"XS", tipoSangre:"O-", contactoEmergencia:"Carmen Vega 04140000010",   eval:{ velocidad:7, tecnica:6, tactica:5, fisico:6, actitud:10, trabajo:9 } },
               ];
@@ -7847,7 +7847,10 @@ export default function App() {
                 <div className="inp-2">
                   <div className="inp-wrap">
                     <div className="inp-lbl">Categoría</div>
-                    <select className="inp" value={nm.cat} onChange={e => setNm(n => ({ ...n, cat:e.target.value }))}>
+                    <select className="inp" value={nm.cat} onChange={e => setNm(n => ({
+                      ...n, cat:e.target.value,
+                      home: e.target.value==="Sub-17" ? (n.home||"Rómulo FC Sub-17 A") : "Rómulo FC"
+                    }))}>
                       {CATS.map(c => <option key={c}>{c}</option>)}
                     </select>
                   </div>
@@ -7856,6 +7859,22 @@ export default function App() {
                     <input className="inp" placeholder="Campo A" value={nm.field} onChange={e => setNm(n => ({ ...n, field:e.target.value }))} />
                   </div>
                 </div>
+                {nm.cat === "Sub-17" && (
+                  <div className="inp-wrap" style={{ marginBottom:8 }}>
+                    <div className="inp-lbl">Equipo Sub-17</div>
+                    <div style={{ display:"flex", gap:6 }}>
+                      {["A","B"].map(eq => (
+                        <button key={eq} className="btn-sm" style={{ flex:1, fontSize:12, fontWeight:700,
+                          background: nm.home===("Rómulo FC Sub-17 "+eq)?"rgba(33,150,243,.25)":"rgba(255,255,255,.03)",
+                          color: nm.home===("Rómulo FC Sub-17 "+eq)?"#7ab3e0":"var(--txt3)",
+                          borderColor: nm.home===("Rómulo FC Sub-17 "+eq)?"rgba(33,150,243,.5)":"rgba(255,255,255,.05)" }}
+                          onClick={()=>setNm(n=>({...n, home:"Rómulo FC Sub-17 "+eq}))}>
+                          Sub-17 {eq}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 {formErr && <div className="err">⚠️ {formErr}</div>}
                 <div className="inp-wrap" style={{ marginTop:6 }}>
                   <div className="inp-lbl">Campeonato (opcional)</div>
