@@ -31,7 +31,7 @@ jobs:
       - name: Crear credenciales
         run: echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > /tmp/sa.json
 
-      - name: Deploy Cloud Functions
+     - name: Deploy Cloud Functions
         run: |
           export GOOGLE_APPLICATION_CREDENTIALS=/tmp/sa.json
           firebase deploy --only functions --project romulo-fc --non-interactive
