@@ -1,364 +1,386 @@
-const { onDocumentCreated, onDocumentUpdated, onDocumentDeleted } = require("firebase-functions/v2/firestore");
+const { onDocumentCreated, onDocumentUpdated } = require("firebase-functions/v2/firestore");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
-const { initializeApp } = require("firebase-admin/app");
-const { getFirestore }  = require("firebase-admin/firestore");
-const { getMessaging }  = require("firebase-admin/messaging");
+const { initializeApp }  = require("firebase-admin/app");
+const { getFirestore }   = require("firebase-admin/firestore");
+const { getMessaging }   = require("firebase-admin/messaging");
 
 initializeApp();
 const db  = getFirestore();
 const fcm = getMessaging();
 
-// ─── HELPER: enviar FCM a todos los tokens registrados ───────────────────────
-async function sendToAll(title, body, link = null) {
-  try {
-    const snap = await db.collection("fcm_tokens").get();
-    if (snap.empty) return;
+// ─── HELPER: resolver tokens según destinatario y preferencias ───────────────
+// para:      "all" | "admins" | "cat:Sub-17A" | "player:123" | "convocados:1,2;cat:X"
+// catOrigen: categoría del evento (para filtrar notifsDesact del usuario)
+async function resolveTokens(para, catOrigen = null) {
+  const col = db.collection("fcm_tokens");
 
-    const tokens = snap.docs.map(d => d.data().token).filter(Boolean);
-    if (!tokens.length) return;
-
-    const message = {
-      notification: { title, body },
-      data: { link: link || "inicio" },
-      tokens,
-    };
-
-    const res = await fcm.sendEachForMulticast(message);
-    console.log(`FCM enviado: ${res.successCount} ok, ${res.failureCount} fallidos`);
-
-    // Limpiar tokens inválidos
-    const toDelete = [];
-    res.responses.forEach((r, i) => {
-      if (!r.success) {
-        const code = r.error?.code;
-        if (
-          code === "messaging/registration-token-not-registered" ||
-          code === "messaging/invalid-registration-token"
-        ) {
-          toDelete.push(tokens[i]);
-        }
-      }
-    });
-    for (const token of toDelete) {
-      const q = await db.collection("fcm_tokens").where("token", "==", token).get();
-      q.forEach(d => d.ref.delete());
+  // Función para filtrar un doc según sus preferencias
+  function puedeRecibir(data) {
+    if (!data.token) return false;
+    // Admins/entrenadores siempre reciben todo
+    if (data.role === "admin" || data.role === "entrenador") return true;
+    // Si hay catOrigen y el usuario tiene esa cat desactivada → no enviar
+    if (catOrigen && Array.isArray(data.notifsDesact) && data.notifsDesact.includes(catOrigen)) {
+      // Excepción: si es su propia categoría, siempre recibe
+      if (data.cat !== catOrigen) return false;
     }
-  } catch (e) {
-    console.error("sendToAll error:", e);
+    return true;
+  }
+
+  if (!para || para === "all") {
+    const snap = await col.get();
+    return snap.docs.map(d => d.data()).filter(puedeRecibir).map(d => d.token);
+  }
+
+  if (para === "admins") {
+    const snap = await col.where("role","in",["admin","entrenador"]).get();
+    return snap.docs.map(d => d.data().token).filter(Boolean);
+  }
+
+  if (para.startsWith("cat:")) {
+    const cat = para.replace("cat:","");
+    const [adminSnap, catSnap] = await Promise.all([
+      col.where("role","in",["admin","entrenador"]).get(),
+      col.where("cat","==",cat).get()
+    ]);
+    const tokens = new Set();
+    adminSnap.docs.forEach(d => { if(d.data().token) tokens.add(d.data().token); });
+    catSnap.docs.forEach(d => { if(puedeRecibir(d.data())) tokens.add(d.data().token); });
+    return [...tokens];
+  }
+
+  if (para.startsWith("player:")) {
+    const pid = para.replace("player:","");
+    const [adminSnap, playerSnap] = await Promise.all([
+      col.where("role","in",["admin","entrenador"]).get(),
+      col.where("playerId","==",pid).get()
+    ]);
+    const tokens = new Set();
+    adminSnap.docs.forEach(d => { if(d.data().token) tokens.add(d.data().token); });
+    // Pago propio: siempre llega aunque haya desactivado la cat
+    playerSnap.docs.forEach(d => { if(d.data().token) tokens.add(d.data().token); });
+    return [...tokens];
+  }
+
+  // Formato LiveMatch: "convocados:1,2,3;cat:Sub-17A"
+  if (para.startsWith("convocados:")) {
+    const parts    = para.split(";");
+    const convPart = parts[0].replace("convocados:","");
+    const catPart  = (parts[1]||"").replace("cat:","");
+    const convIds  = convPart.split(",").map(s=>s.trim()).filter(Boolean);
+
+    const adminSnap = await col.where("role","in",["admin","entrenador"]).get();
+    const tokens = new Set();
+    adminSnap.docs.forEach(d => { if(d.data().token) tokens.add(d.data().token); });
+
+    for (const pid of convIds) {
+      const pSnap = await col.where("playerId","==",pid).get();
+      // Convocados siempre reciben eventos de su partido
+      pSnap.docs.forEach(d => { if(d.data().token) tokens.add(d.data().token); });
+    }
+
+    if (catPart) {
+      const cSnap = await col.where("cat","==",catPart).get();
+      cSnap.docs.forEach(d => { if(puedeRecibir(d.data())) tokens.add(d.data().token); });
+    }
+
+    return [...tokens];
+  }
+
+  // Fallback: todos respetando preferencias
+  const snap = await col.get();
+  return snap.docs.map(d => d.data()).filter(d => puedeRecibir(d)).map(d => d.token);
+}
+
+// ─── HELPER: enviar FCM a lista de tokens ────────────────────────────────────
+async function sendTokens(tokens, title, body, link = "inicio") {
+  if (!tokens.length) return;
+  const chunks = [];
+  for (let i = 0; i < tokens.length; i += 500) chunks.push(tokens.slice(i, i+500));
+
+  const toDelete = [];
+  for (const chunk of chunks) {
+    try {
+      const res = await fcm.sendEachForMulticast({
+        notification: { title, body },
+        data: { link },
+        tokens: chunk,
+        android: { notification: { sound:"default", channelId:"romulo_fc", priority:"high" } },
+        apns:    { payload: { aps: { sound:"default", badge:1 } } },
+        webpush: {
+          notification: {
+            icon:"/icons/icon-192.png",
+            badge:"/icons/icon-192.png",
+            vibrate:[200,100,200],
+            requireInteraction: false
+          },
+          fcmOptions: { link: "https://romulo-fc.pages.dev/" + link }
+        }
+      });
+      res.responses.forEach((r, i) => {
+        if (!r.success) {
+          const code = r.error?.code;
+          if (code==="messaging/registration-token-not-registered" ||
+              code==="messaging/invalid-registration-token") {
+            toDelete.push(chunk[i]);
+          }
+        }
+      });
+      console.log(`FCM: ${res.successCount} ok, ${res.failureCount} fallidos`);
+    } catch(e) {
+      console.error("sendTokens error:", e);
+    }
+  }
+
+  // Limpiar tokens inválidos
+  for (const token of toDelete) {
+    const q = await db.collection("fcm_tokens").where("token","==",token).get();
+    q.forEach(d => d.ref.delete());
   }
 }
 
-// ─── HELPER: guardar notificación interna en Firestore ───────────────────────
-async function saveNotif(txt, link = null, extra = {}) {
-  const id = "fn_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6);
-  await db.collection("notifs").doc(id).set({
-    id,
-    txt,
-    ts: new Date().toISOString(),
-    read: false,
-    link: link || "inicio",
-    ...extra,
-  });
+// ─── HELPER: parsear fecha "21 Mar 2026" o ISO "2026-03-21" ─────────────────
+function parseDate(str) {
+  if (!str) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return new Date(str + "T12:00:00");
+  const MESES = {Ene:0,Feb:1,Mar:2,Abr:3,May:4,Jun:5,Jul:6,Ago:7,Sep:8,Oct:9,Nov:10,Dic:11};
+  const parts = str.trim().split(/\s+/);
+  if (parts.length >= 2) {
+    const dd = parseInt(parts[0]), mm = MESES[parts[1]];
+    const yy = parts[2] ? parseInt(parts[2]) : new Date().getFullYear();
+    if (!isNaN(dd) && mm !== undefined) return new Date(yy, mm, dd, 12, 0, 0);
+  }
+  return null;
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// 1. NUEVO JUGADOR
-// ════════════════════════════════════════════════════════════════════════════
-exports.onNuevoJugador = onDocumentCreated("players/{pid}", async (event) => {
-  const p = event.data.data();
-  const txt = `👤 Nuevo jugador registrado: ${p.nombre} ${p.apellido} (${p.cat})`;
-
-  await saveNotif(txt, "jugadores");
-  await sendToAll("⚽ Rómulo FC — Nuevo jugador", `${p.nombre} ${p.apellido} · ${p.cat}`, "jugadores");
+// ─── TRIGGER: procesar cola push_queue ───────────────────────────────────────
+exports.processPushQueue = onDocumentCreated("push_queue/{id}", async (event) => {
+  const data = event.data?.data();
+  if (!data || data.processed) return;
+  const { title, body, link, para, catOrigen } = data;
+  try {
+    const tokens = await resolveTokens(para, catOrigen || null);
+    if (tokens.length) await sendTokens(tokens, title, body, link);
+    await event.data.ref.update({ processed:true, processedAt:new Date().toISOString() });
+  } catch(e) {
+    console.error("processPushQueue error:", e);
+    await event.data.ref.update({ error: String(e) });
+  }
 });
 
-// ════════════════════════════════════════════════════════════════════════════
-// 2. JUGADOR ACTUALIZADO
-// ════════════════════════════════════════════════════════════════════════════
-exports.onJugadorActualizado = onDocumentUpdated("players/{pid}", async (event) => {
-  const antes  = event.data.before.data();
-  const despues = event.data.after.data();
-
-  // Evitar notificar si solo cambian stats internas (goles, partidos, etc.)
-  const cambios = [];
-  if (antes.nombre    !== despues.nombre)    cambios.push("nombre");
-  if (antes.apellido  !== despues.apellido)  cambios.push("apellido");
-  if (antes.cat       !== despues.cat)       cambios.push("categoría");
-  if (antes.num       !== despues.num)       cambios.push("camiseta");
-  if (antes.subequipo !== despues.subequipo) cambios.push("equipo");
-  if (antes.notas     !== despues.notas)     cambios.push("notas");
-
-  if (!cambios.length) return; // Solo cambió stats — ignorar
-
-  const txt = `✏️ Jugador actualizado: ${despues.nombre} ${despues.apellido} (${cambios.join(", ")})`;
-  await saveNotif(txt, "jugadores");
-  await sendToAll("✏️ Rómulo FC — Jugador actualizado", `${despues.nombre} ${despues.apellido} · ${cambios.join(", ")}`, "jugadores");
-});
-
-// ════════════════════════════════════════════════════════════════════════════
-// 3. JUGADOR ELIMINADO
-// ════════════════════════════════════════════════════════════════════════════
-exports.onJugadorEliminado = onDocumentDeleted("players/{pid}", async (event) => {
-  const p = event.data.data();
-  const txt = `🗑️ Jugador eliminado: ${p.nombre} ${p.apellido} (${p.cat})`;
-
-  await saveNotif(txt, "jugadores");
-  await sendToAll("🗑️ Rómulo FC — Jugador eliminado", `${p.nombre} ${p.apellido} · ${p.cat}`, "jugadores");
-});
-
-// ════════════════════════════════════════════════════════════════════════════
-// 4. NUEVO PARTIDO
-// ════════════════════════════════════════════════════════════════════════════
-exports.onNuevoPartido = onDocumentCreated("matches/{mid}", async (event) => {
-  const m = event.data.data();
-
-  // No notificar si el partido ya está finalizado (importado con resultado)
-  if (m.status === "finalizado") return;
-
-  const fase = m.fase && m.fase !== "Normal" ? ` · ${m.fase}` : "";
-  const txt  = `📅 Nuevo partido: ${m.home} vs ${m.away} · ${m.cat} · ${m.date} ${m.time}${fase}`;
-
-  await saveNotif(txt, "calendario");
-  await sendToAll(
-    "📅 Rómulo FC — Partido programado",
-    `${m.home} vs ${m.away} · ${m.date} ${m.time}`,
+// ─── TRIGGER: nuevo partido ───────────────────────────────────────────────────
+exports.onNuevoPartido = onDocumentCreated("matches/{id}", async (event) => {
+  const m = event.data?.data();
+  if (!m || m.status !== "próximo") return;
+  const tokens = await resolveTokens("cat:" + m.cat);
+  await sendTokens(tokens,
+    "📅 Nuevo Partido",
+    `${m.home} vs ${m.away} · ${m.date} ${m.time||""}`,
     "calendario"
   );
 });
 
-// ════════════════════════════════════════════════════════════════════════════
-// 5. PARTIDO ACTUALIZADO
-// ════════════════════════════════════════════════════════════════════════════
-exports.onPartidoActualizado = onDocumentUpdated("matches/{mid}", async (event) => {
-  const antes   = event.data.before.data();
-  const despues = event.data.after.data();
+// ─── TRIGGER: partido modificado o finalizado ─────────────────────────────────
+exports.onPartidoActualizado = onDocumentUpdated("matches/{id}", async (event) => {
+  const before = event.data?.before?.data();
+  const after  = event.data?.after?.data();
+  if (!before || !after) return;
 
-  // Si pasó de próximo a finalizado → notificar resultado
-  if (antes.status !== "finalizado" && despues.status === "finalizado") {
-    const res = despues.scoreH > despues.scoreA ? "VICTORIA" :
-                despues.scoreH < despues.scoreA ? "DERROTA" : "EMPATE";
-    const txt = `🏁 Partido finalizado: ${despues.home} ${despues.scoreH}–${despues.scoreA} ${despues.away} · ${res}`;
-
-    await saveNotif(txt, "calendario");
-    await sendToAll(
-      `🏁 Rómulo FC — ${res}`,
-      `${despues.home} ${despues.scoreH}–${despues.scoreA} ${despues.away}`,
+  // Finalizado
+  if (before.status !== "finalizado" && after.status === "finalizado") {
+    const gH = after.scoreH ?? 0, gA = after.scoreA ?? 0;
+    const esCasa = (after.home||"").includes("Rómulo");
+    const gRFC = esCasa ? gH : gA, gRiv = esCasa ? gA : gH;
+    const res = gRFC > gRiv ? "VICTORIA" : gRFC < gRiv ? "DERROTA" : "EMPATE";
+    const emoj = res==="VICTORIA"?"🏆":res==="DERROTA"?"😔":"🤝";
+    const tokens = await resolveTokens("cat:" + after.cat);
+    await sendTokens(tokens,
+      `${emoj} Resultado: ${res}`,
+      `${after.home} ${gH}-${gA} ${after.away}`,
       "calendario"
     );
     return;
   }
 
-  // Si cambió fecha/hora/cancha → notificar reprogramación
-  if (
-    antes.status !== "finalizado" &&
-    (antes.date !== despues.date || antes.time !== despues.time || antes.field !== despues.field)
-  ) {
-    const txt = `🔄 Partido reprogramado: ${despues.home} vs ${despues.away} · ${despues.date} ${despues.time} · ${despues.field}`;
-    await saveNotif(txt, "calendario");
-    await sendToAll(
-      "🔄 Rómulo FC — Partido reprogramado",
-      `${despues.home} vs ${despues.away} · ${despues.date} ${despues.time}`,
+  // Reprogramado (cambió fecha u hora)
+  if (before.status === "próximo" && after.status === "próximo" &&
+      (before.date !== after.date || before.time !== after.time)) {
+    const tokens = await resolveTokens("cat:" + after.cat);
+    await sendTokens(tokens,
+      "🔄 Partido Reprogramado",
+      `${after.home} vs ${after.away} · ${after.date} ${after.time||""}`,
       "calendario"
     );
   }
 });
 
-// ════════════════════════════════════════════════════════════════════════════
-// 6. PARTIDO ELIMINADO
-// ════════════════════════════════════════════════════════════════════════════
-exports.onPartidoEliminado = onDocumentDeleted("matches/{mid}", async (event) => {
-  const m = event.data.data();
-  if (m.status === "finalizado") return; // No notificar eliminación de partidos ya jugados
-
-  const txt = `🗑️ Partido eliminado: ${m.home} vs ${m.away} · ${m.date}`;
-  await saveNotif(txt, "calendario");
-  await sendToAll("🗑️ Rómulo FC — Partido eliminado", `${m.home} vs ${m.away} · ${m.date}`, "calendario");
+// ─── TRIGGER: nuevo entrenamiento ─────────────────────────────────────────────
+exports.onNuevoEntreno = onDocumentCreated("trainings/{id}", async (event) => {
+  const t = event.data?.data();
+  if (!t) return;
+  const cats = t.cats || [];
+  if (!cats.length) return;
+  const para = cats.length === 1 ? "cat:" + cats[0] : "all";
+  const tokens = await resolveTokens(para);
+  const fechaLeg = t.fecha ? new Date(t.fecha+"T12:00:00").toLocaleDateString("es",{weekday:"short",day:"numeric",month:"short"}) : t.fecha;
+  await sendTokens(tokens,
+    "🏃 Nuevo Entrenamiento",
+    `${t.tema||"Entrenamiento"} · ${fechaLeg} ${t.hora||""} · ${t.lugar||""}`,
+    "entrenos"
+  );
 });
 
-// ════════════════════════════════════════════════════════════════════════════
-// 7. PAGO REGISTRADO
-// ════════════════════════════════════════════════════════════════════════════
+// ─── TRIGGER: entrenamiento modificado ────────────────────────────────────────
+exports.onEntrenoActualizado = onDocumentUpdated("trainings/{id}", async (event) => {
+  const before = event.data?.before?.data();
+  const after  = event.data?.after?.data();
+  if (!before || !after) return;
+  if (before.fecha === after.fecha && before.hora === after.hora && before.lugar === after.lugar) return;
+  const cats = after.cats || [];
+  const para = cats.length === 1 ? "cat:" + cats[0] : "all";
+  const tokens = await resolveTokens(para);
+  const fechaLeg = after.fecha ? new Date(after.fecha+"T12:00:00").toLocaleDateString("es",{weekday:"short",day:"numeric",month:"short"}) : after.fecha;
+  await sendTokens(tokens,
+    "🔄 Entrenamiento Modificado",
+    `${after.tema||"Entrenamiento"} · ${fechaLeg} ${after.hora||""} · ${after.lugar||""}`,
+    "entrenos"
+  );
+});
+
+// ─── TRIGGER: pago registrado ─────────────────────────────────────────────────
 exports.onPagoRegistrado = onDocumentUpdated("pay/{pid}", async (event) => {
-  const antes   = event.data.before.data();
-  const despues = event.data.after.data();
-
-  // Detectar qué mes nuevo se pagó
-  const MONTHS = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
-  for (const mes of MONTHS) {
-    const antPaid  = antes.months?.[mes]?.paid;
-    const despPaid = despues.months?.[mes]?.paid;
-
-    if (!antPaid && despPaid) {
-      // Obtener nombre del jugador
-      let nombreJugador = "Jugador";
-      try {
-        const pSnap = await db.collection("players").doc(event.params.pid).get();
-        if (pSnap.exists) {
-          const p = pSnap.data();
-          nombreJugador = `${p.nombre} ${p.apellido}`;
-        }
-      } catch (_) {}
-
-      const monto  = despues.months[mes]?.monto ? ` · Bs. ${despues.months[mes].monto}` : "";
-      const metodo = despues.months[mes]?.metodo ? ` (${despues.months[mes].metodo})` : "";
-      const txt    = `💳 Pago registrado: ${nombreJugador} · ${mes}${monto}${metodo}`;
-
-      await saveNotif(txt, "pagos");
-      await sendToAll("💳 Rómulo FC — Pago registrado", `${nombreJugador} · ${mes}${monto}`, "pagos");
-      return; // Solo notificar el primer mes nuevo encontrado por update
-    }
-  }
-
-  // Detectar pago de inscripción a campeonato
-  const champsAntes   = antes.championships   || {};
-  const champsDespues = despues.championships || {};
-  for (const champId of Object.keys(champsDespues)) {
-    if (!champsAntes[champId]?.paid && champsDespues[champId]?.paid) {
-      let nombreJugador = "Jugador";
-      let nombreChamp   = "Campeonato";
-      try {
-        const pSnap = await db.collection("players").doc(event.params.pid).get();
-        if (pSnap.exists) {
-          const p = pSnap.data();
-          nombreJugador = `${p.nombre} ${p.apellido}`;
-        }
-        const cSnap = await db.collection("champs").doc(String(champId)).get();
-        if (cSnap.exists) nombreChamp = cSnap.data().nombre;
-      } catch (_) {}
-
-      const txt = `🏆 Inscripción pagada: ${nombreJugador} · ${nombreChamp}`;
-      await saveNotif(txt, "campeonatos");
-      await sendToAll("🏆 Rómulo FC — Inscripción pagada", `${nombreJugador} · ${nombreChamp}`, "campeonatos");
-      return;
-    }
-  }
-});
-
-// ════════════════════════════════════════════════════════════════════════════
-// 8. NUEVO CAMPEONATO
-// ════════════════════════════════════════════════════════════════════════════
-exports.onNuevoCampeonato = onDocumentCreated("champs/{cid}", async (event) => {
-  const c    = event.data.data();
-  const cats = c.cats?.length ? c.cats.join(", ") : "Todas las categorías";
-  const txt  = `🏆 Nuevo campeonato: ${c.nombre} · ${cats}`;
-
-  await saveNotif(txt, "campeonatos");
-  await sendToAll("🏆 Rómulo FC — Nuevo campeonato", `${c.nombre} · ${cats}`, "campeonatos");
-});
-
-// ════════════════════════════════════════════════════════════════════════════
-// 9. CAMPEONATO ACTUALIZADO (fase eliminatoria iniciada)
-// ════════════════════════════════════════════════════════════════════════════
-exports.onCampeonatoActualizado = onDocumentUpdated("champs/{cid}", async (event) => {
-  const antes   = event.data.before.data();
-  const despues = event.data.after.data();
-
-  // Detección: pasó de grupos a eliminatoria
-  if (antes.fase !== "eliminatoria" && despues.fase === "eliminatoria") {
-    const txt = `⚔️ Fase eliminatoria iniciada: ${despues.nombre} · desde ${despues.rondaActual}`;
-    await saveNotif(txt, "campeonatos");
-    await sendToAll(
-      "⚔️ Rómulo FC — Fase eliminatoria",
-      `${despues.nombre} · ${despues.rondaActual}`,
-      "campeonatos"
-    );
-    return;
-  }
-
-  // Detección: avance de ronda
-  if (
-    antes.fase === "eliminatoria" &&
-    despues.fase === "eliminatoria" &&
-    antes.rondaActual !== despues.rondaActual
-  ) {
-    const txt = `⚔️ ${despues.nombre} avanza a ${despues.rondaActual}`;
-    await saveNotif(txt, "campeonatos");
-    await sendToAll("⚔️ Rómulo FC — Nueva ronda", `${despues.nombre} · ${despues.rondaActual}`, "campeonatos");
-  }
-});
-
-// ════════════════════════════════════════════════════════════════════════════
-// 10. ACCIONES EN VIVO (goles, tarjetas, faltas, etc.)
-// ════════════════════════════════════════════════════════════════════════════
-exports.onNotifEnVivo = onDocumentCreated("notifs/{nid}", async (event) => {
-  const n = event.data.data();
-
-  // Solo procesar notificaciones de partidos en vivo generadas por la app
-  if (!n.live) return;
-
-  // No generar notif interna duplicada — ya la creó la app
-  // Solo enviar el push FCM
-  await sendToAll("🔴 EN VIVO — Rómulo FC", n.txt, n.link || "calendario");
-});
-
-// ════════════════════════════════════════════════════════════════════════════
-// 11. SANCIÓN — TARJETA ROJA (suspensión automática)
-// ════════════════════════════════════════════════════════════════════════════
-exports.onSancionActualizada = onDocumentUpdated("sanc/{pid}", async (event) => {
-  const antes   = event.data.before.data();
-  const despues = event.data.after.data();
-
-  // Nueva tarjeta roja → suspensión
-  if (!antes.suspended && despues.suspended) {
-    let nombre = "Jugador";
-    try {
-      const pSnap = await db.collection("players").doc(event.params.pid).get();
-      if (pSnap.exists) {
-        const p = pSnap.data();
-        nombre = `${p.nombre} ${p.apellido}`;
-      }
-    } catch (_) {}
-
-    const txt = `🟥 ${nombre} suspendido por tarjeta roja`;
-    await saveNotif(txt, "jugadores");
-    await sendToAll("🟥 Rómulo FC — Suspensión", txt, "jugadores");
-    return;
-  }
-
-  // 3 tarjetas amarillas acumuladas
-  const antY  = antes.yellows  || 0;
-  const despY = despues.yellows || 0;
-  if (antY < 3 && despY >= 3) {
-    let nombre = "Jugador";
-    try {
-      const pSnap = await db.collection("players").doc(event.params.pid).get();
-      if (pSnap.exists) {
-        const p = pSnap.data();
-        nombre = `${p.nombre} ${p.apellido}`;
-      }
-    } catch (_) {}
-
-    const txt = `🟨 ${nombre} acumula ${despY} tarjetas amarillas`;
-    await saveNotif(txt, "jugadores");
-    await sendToAll("🟨 Rómulo FC — Tarjetas amarillas", txt, "jugadores");
-  }
-});
-
-// ════════════════════════════════════════════════════════════════════════════
-// 12. RECORDATORIO MENSUAL DE PAGOS (día 1 de cada mes, 8 AM Venezuela)
-// ════════════════════════════════════════════════════════════════════════════
-exports.recordatorioMensual = onSchedule("0 12 1 * *", async () => {
-  // 12 UTC = 8 AM Venezuela (UTC-4)
-  const MONTHS = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
-  const mesActual = MONTHS[new Date().getMonth()];
-
-  // Contar jugadores con pago pendiente
-  let pendientes = 0;
-  try {
-    const paySnap = await db.collection("pay").get();
-    paySnap.forEach(doc => {
-      const data = doc.data();
-      if (!data.months?.[mesActual]?.paid) pendientes++;
-    });
-  } catch (_) {}
-
-  const txt = `📆 Recordatorio: inicio de mes ${mesActual} · ${pendientes} jugadores con mensualidad pendiente`;
-  await saveNotif(txt, "pagos");
-  await sendToAll(
-    `📆 Rómulo FC — Mensualidad ${mesActual}`,
-    pendientes > 0
-      ? `${pendientes} jugadores con pago pendiente`
-      : "Todos los pagos al día ✅",
+  const before = event.data?.before?.data();
+  const after  = event.data?.after?.data();
+  if (!before || !after) return;
+  const months = after.months || {}, prevM = before.months || {};
+  const mesPagado = Object.keys(months).find(m => months[m]?.paid && !prevM[m]?.paid);
+  if (!mesPagado) return;
+  const playerDoc = await db.collection("players").doc(event.params.pid).get();
+  const player = playerDoc.data();
+  if (!player) return;
+  const tokens = await resolveTokens("player:" + event.params.pid);
+  await sendTokens(tokens,
+    "✅ Pago Confirmado",
+    `${player.nombre} ${player.apellido} — ${mesPagado} registrado`,
     "pagos"
   );
+});
+
+// ─── TRIGGER: nueva notificación del club ─────────────────────────────────────
+exports.onNuevaNotif = onDocumentCreated("notifs/{id}", async (event) => {
+  const n = event.data?.data();
+  if (!n || n.tipo === "sistema" || n.live) return; // no push para notifs internas ni live
+  const tokens = await resolveTokens(n.para || "all");
+  if (!tokens.length) return;
+  await sendTokens(tokens, "🔔 Rómulo FC", n.txt, n.link || "inicio");
+});
+
+// ─── SCHEDULE: recordatorios 24h y 1h antes de partidos ─────────────────────
+exports.recordatoriosPartidos = onSchedule("every 30 minutes", async () => {
+  const now  = new Date();
+  const snap = await db.collection("matches").where("status","==","próximo").get();
+
+  for (const doc of snap.docs) {
+    const m = doc.data();
+    const fd = parseDate(m.date);
+    if (!fd) continue;
+
+    // Combinar fecha + hora
+    if (m.time) {
+      const [hh, mm] = m.time.split(":").map(Number);
+      fd.setHours(hh || 0, mm || 0, 0, 0);
+    }
+
+    const diffMs  = fd - now;
+    const diffMin = diffMs / 60000;
+
+    // Ventana de 30 min para no enviar doble
+    const ya24h = m.notif24h;
+    const ya1h  = m.notif1h;
+
+    if (!ya24h && diffMin > 0 && diffMin <= 1440 + 15 && diffMin >= 1440 - 15) {
+      const tokens = await resolveTokens("cat:" + m.cat);
+      await sendTokens(tokens,
+        "⏰ Partido Mañana",
+        `${m.home} vs ${m.away} · ${m.date} ${m.time||""} · ${m.field||""}`,
+        "calendario"
+      );
+      await doc.ref.update({ notif24h: true });
+    }
+
+    if (!ya1h && diffMin > 0 && diffMin <= 60 + 15 && diffMin >= 60 - 15) {
+      const tokens = await resolveTokens("cat:" + m.cat);
+      await sendTokens(tokens,
+        "🔔 Partido en 1 Hora",
+        `${m.home} vs ${m.away} · ${m.time||""} · ${m.field||""}`,
+        "calendario"
+      );
+      await doc.ref.update({ notif1h: true });
+    }
+  }
+});
+
+// ─── SCHEDULE: recordatorios 24h y 1h antes de entrenamientos ───────────────
+exports.recordatoriosEntrenos = onSchedule("every 30 minutes", async () => {
+  const now   = new Date();
+  const hoyISO = now.toISOString().slice(0,10);
+  const snap  = await db.collection("trainings")
+    .where("fecha", ">=", hoyISO).get();
+
+  for (const doc of snap.docs) {
+    const t = doc.data();
+    const fd = t.fecha ? new Date(t.fecha + "T12:00:00") : null;
+    if (!fd) continue;
+
+    if (t.hora) {
+      const [hh, mm] = t.hora.split(":").map(Number);
+      fd.setHours(hh||0, mm||0, 0, 0);
+    }
+
+    const diffMs  = fd - now;
+    const diffMin = diffMs / 60000;
+    const cats    = t.cats || [];
+    const para    = cats.length === 1 ? "cat:" + cats[0] : "all";
+
+    if (!t.notif24h && diffMin > 0 && diffMin <= 1440+15 && diffMin >= 1440-15) {
+      const tokens = await resolveTokens(para);
+      await sendTokens(tokens,
+        "⏰ Entrenamiento Mañana",
+        `${t.tema||"Entrenamiento"} · ${t.hora||""} · ${t.lugar||""}`,
+        "entrenos"
+      );
+      await doc.ref.update({ notif24h: true });
+    }
+
+    if (!t.notif1h && diffMin > 0 && diffMin <= 60+15 && diffMin >= 60-15) {
+      const tokens = await resolveTokens(para);
+      await sendTokens(tokens,
+        "🔔 Entrenamiento en 1 Hora",
+        `${t.tema||"Entrenamiento"} · ${t.hora||""} · ${t.lugar||""}`,
+        "entrenos"
+      );
+      await doc.ref.update({ notif1h: true });
+    }
+  }
+});
+
+// ─── SCHEDULE: limpieza semanal ───────────────────────────────────────────────
+exports.limpieza = onSchedule("every week", async () => {
+  // Tokens viejos (>30 días sin actualizar)
+  const hace30 = new Date();
+  hace30.setDate(hace30.getDate() - 30);
+  const tokSnap = await db.collection("fcm_tokens")
+    .where("updatedAt","<",hace30.toISOString()).get();
+  const batch1 = db.batch();
+  tokSnap.docs.forEach(d => batch1.delete(d.ref));
+  await batch1.commit();
+
+  // Cola procesada
+  const qSnap = await db.collection("push_queue")
+    .where("processed","==",true).get();
+  const batch2 = db.batch();
+  qSnap.docs.forEach(d => batch2.delete(d.ref));
+  await batch2.commit();
+
+  console.log(`Limpieza: ${tokSnap.size} tokens, ${qSnap.size} queue items eliminados`);
 });
