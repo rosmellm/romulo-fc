@@ -4273,20 +4273,19 @@ export default function App() {
       return CATS_ORDER.indexOf(a.cat) - CATS_ORDER.indexOf(b.cat);
     });
     // Si está minimizado, mostramos el admin con banner flotante
-    // LiveMatch siempre montado para preservar cronómetro y estado
-    // Cuando está minimizado se oculta con display:none pero sigue corriendo
-    const liveMatchEl = (
-      <div style={{ display: liveMMinimized ? "none" : "block" }}>
-        <style>{CSS}</style>
-        <LiveMatch
-          match={liveM}
-          myPlayers={myPlayers}
-          sanctions={sanc}
-          setSanctions={setSanc}
-          minET={champs.find(c => c.id === liveM.champId)?.minET || 5}
-          onClose={() => { setLiveM(null); setLiveMMinimized(false); }}
-          onMinimize={() => setLiveMMinimized(true)}
-          onPush={sendPush}
+    if (!liveMMinimized) {
+      return (
+        <>
+          <style>{CSS}</style>
+          <LiveMatch
+            match={liveM}
+            myPlayers={myPlayers}
+            sanctions={sanc}
+            setSanctions={setSanc}
+            minET={champs.find(c => c.id === liveM.champId)?.minET || 5}
+            onClose={() => { setLiveM(null); setLiveMMinimized(false); }}
+            onMinimize={() => setLiveMMinimized(true)}
+            onPush={sendPush}
           onSave={r => {
             // Guardar resultado en Firebase
             const matchData = { ...liveM, scoreH:r.scoreH, scoreA:r.scoreA, status:"finalizado",
@@ -4632,9 +4631,10 @@ export default function App() {
           );
         })()}
         <ConfirmDialog cfg={conf} onClose={() => setConf(null)} />
-      </>
-    );
-  }
+        </>
+      );
+    } // fin if !liveMMinimized
+  } // fin if liveM
 
   // ── LOGIN ──────────────────────────────────
   if (!dbReady) {
