@@ -1201,7 +1201,8 @@ function MatchCard({ m, champs }) {
 
 // ─── LIVE MATCH COMPONENT ─────────────────────────────────────
 
-function LiveMatch({ match, myPlayers, sanctions, setSanctions, onClose, onSave, onMinimize, onStateChange, minET = 5 }) {
+function LiveMatch({ match, myPlayers, sanctions, setSanctions, onClose, onSave, onMinimize, onStateChange, onPush, minET = 5 }) {
+  const sendPushLive = onPush || (()=>{});
 
   const [phase,      setPhase]     = useState("rivals");
   const [rivals,     setRivals]    = useState([]);
@@ -1386,6 +1387,33 @@ function LiveMatch({ match, myPlayers, sanctions, setSanctions, onClose, onSave,
         tipo: (type==="goal_us"||type==="goal_them") ? "gol" : "live",
         readBy: {}
       });
+
+      // ── Push según tipo de evento ──
+      const convIds = convocados?.map(String) || [];
+      // "convocados:[1,2,3]" — Cloud Functions envían a admins + esos jugadores
+      const paraLive = convIds.length > 0
+        ? "convocados:" + convIds.join(",") + ";cat:" + (match?.cat||"")
+        : "admins";
+
+      const pushMap = {
+        goal_us:   ["⚽ GOL de Rómulo FC",     txt + " · " + pad2(curMin) + "'"        ],
+        goal_them: ["⚽ Gol del Rival",          txt + " · " + pad2(curMin) + "'"        ],
+        y_us:      ["🟨 Tarjeta Amarilla",       txt + " · " + pad2(curMin) + "'"        ],
+        r_us:      ["🟥 Tarjeta Roja",           txt + " · " + pad2(curMin) + "'"        ],
+        y_them:    ["🟨 Amarilla al Rival",       txt + " · " + pad2(curMin) + "'"        ],
+        r_them:    ["🟥 Roja al Rival",           txt + " · " + pad2(curMin) + "'"        ],
+        fd_us:     ["⚠️ Falta Directa",           txt + " · " + pad2(curMin) + "'"        ],
+        fi_us:     ["↩️ Falta Indirecta",         txt + " · " + pad2(curMin) + "'"        ],
+        fd_them:   ["⚠️ Falta Directa Rival",     txt + " · " + pad2(curMin) + "'"        ],
+        fi_them:   ["↩️ Falta Indirecta Rival",   txt + " · " + pad2(curMin) + "'"        ],
+        tm:        ["⏸️ Tiempo Muerto",           matchLabel + " · " + pad2(curMin) + "'"],
+        half:      ["🔔 Fin del Primer Tiempo",   matchLabel + " " + (us||0)+"-"+(them||0)],
+        end:       ["🏁 Fin del Partido",         matchLabel + " " + (us||0)+"-"+(them||0)],
+      };
+      if (!isDemoSession() && pushMap[type]) {
+        const [pushTitle, pushBody] = pushMap[type];
+        if (typeof sendPushLive === "function") sendPushLive(pushTitle, pushBody, paraLive, match?.cat||null);
+      }
     }
   }
 
@@ -1952,7 +1980,19 @@ function LiveMatch({ match, myPlayers, sanctions, setSanctions, onClose, onSave,
           <button
             className="btn"
             disabled={titulares.length !== 5}
-            onClick={() => { setOnField([...titulares]); setPhase("live"); }}
+            onClick={() => {
+              setOnField([...titulares]);
+              setPhase("live");
+              // Push: partido iniciado
+              const convIds2 = convocados.map(p=>String(p.id||p));
+              const paraInicio = "convocados:"+convIds2.join(",")+";cat:"+(match?.cat||"");
+              sendPushLive(
+                "🟢 ¡Partido Iniciado!",
+                (match?.home||"Rómulo FC")+" vs "+(match?.away||"Rival")+" · "+new Date().toLocaleTimeString("es",{hour:"2-digit",minute:"2-digit"}),
+                "calendario",
+                paraInicio
+              );
+            }}
           >
             ▶ INICIAR PARTIDO
           </button>
@@ -2017,17 +2057,68 @@ function LiveMatch({ match, myPlayers, sanctions, setSanctions, onClose, onSave,
           <div className="card">
             <div className="ch">
               <span className="ct">Bitácora</span>
-              <span className="bg bg-b">{events.length}</span>
+              <div style={{ display:"flex", gap:5, alignItems:"center" }}>
+                <span className="bg bg-b">{events.length}</span>
+                {events.length > 0 && (
+                  <button className="btn-sm" style={{ fontSize:8, padding:"3px 8px",
+                    background:"rgba(21,101,192,.12)", borderColor:"rgba(33,150,243,.2)", color:"#7ab3e0" }}
+                    onClick={async () => {
+                      const el = document.getElementById("bitacora-live-img");
+                      if (!el) return;
+                      const script = document.createElement("script");
+                      script.src = "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js";
+                      script.onload = async () => {
+                        const canvas = await window.html2canvas(el, {
+                          backgroundColor:"#04060c", scale:2, useCORS:true, logging:false
+                        });
+                        canvas.toBlob(async blob => {
+                          if (!blob) return;
+                          const file = new File([blob],"bitacora-romulo.png",{type:"image/png"});
+                          if (navigator.share && navigator.canShare({files:[file]})) {
+                            await navigator.share({files:[file], title:"Bitácora · Rómulo FC"});
+                          } else {
+                            const url=URL.createObjectURL(blob);
+                            const a=document.createElement("a");
+                            a.href=url; a.download="bitacora-romulo.png";
+                            a.click(); URL.revokeObjectURL(url);
+                          }
+                        },"image/png");
+                      };
+                      if (!window.html2canvas) document.head.appendChild(script);
+                      else script.onload();
+                    }}>
+                    🖼️ Compartir
+                  </button>
+                )}
+              </div>
             </div>
-            <div className="evlog">
-              {events.map(e => (
-                <div key={e.id} className="ev">
-                  <span className="ev-min">{e.min}'</span>
-                  <span className="ev-ico">{e.ico}</span>
-                  <span className="ev-txt">{e.txt}</span>
-                  <span className="ev-p">{e.period === 1 ? "1T" : e.period === 2 ? "2T" : e.period === 3 ? "ET1" : "ET2"}</span>
+            {/* Bloque capturado */}
+            <div id="bitacora-live-img" style={{ background:"#04060c", padding:"8px 0" }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center",
+                marginBottom:8, padding:"0 2px" }}>
+                <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:14, letterSpacing:2 }}>
+                  <span style={{ color:"#2196F3" }}>RÓMULO</span>{" "}
+                  <span style={{ color:"#E53935" }}>F.C</span>
+                  <span style={{ fontSize:10, color:"var(--txt3)", marginLeft:8, fontFamily:"'Barlow',sans-serif" }}>
+                    {match?.home} vs {match?.away}
+                  </span>
                 </div>
-              ))}
+                <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:18,
+                  color: scoreUs > scoreThem ? "#4caf50" : scoreUs < scoreThem ? "#E53935" : "#d4b84a",
+                  letterSpacing:1 }}>
+                  {scoreUs}–{scoreThem}
+                </div>
+              </div>
+              <div className="evlog">
+                {[...events].reverse().map(e => (
+                  <div key={e.id} className="ev">
+                    <span className="ev-min">{e.min}'</span>
+                    <span className="ev-ico">{e.ico}</span>
+                    <span className="ev-txt">{e.txt}</span>
+                    <span className="ev-p">{e.period===1?"1T":e.period===2?"2T":e.period===3?"ET1":"ET2"}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
           <div className="card">
@@ -2961,6 +3052,25 @@ export default function App() {
     }
   }
 
+  // ── ENVÍO DE NOTIFICACIONES PUSH ──────────────────────────────
+  // para: "all" | "admins" | "cat:Sub-17A" | "player:123" | "convocados:[1,2,3]"
+  // sendPush — para: "all" | "admins" | "cat:Sub-17A" | "player:123" | "convocados:1,2;cat:X"
+  // catOrigen: categoría del evento (para respetar preferencias del usuario)
+  async function sendPush(title, body, link = "inicio", para = "all", catOrigen = null) {
+    if (isDemo) return;
+    try {
+      const queueId = "pq_" + Date.now() + "_" + Math.random().toString(36).slice(2,6);
+      await setDoc(doc(db, "push_queue", queueId), {
+        title, body, link, para,
+        catOrigen: catOrigen || null, // null = sin filtro de preferencias
+        createdAt: new Date().toISOString(),
+        processed: false
+      });
+    } catch(e) {
+      console.warn("sendPush error:", e);
+    }
+  }
+
   // Detectar modo demo antes de Firebase
   const _demoCheck = (() => { try { const s = localStorage.getItem("rfc_session"); return s ? JSON.parse(s)?.isDemo : false; } catch { return false; } })();
 
@@ -3301,7 +3411,7 @@ export default function App() {
   const [hpStats, setHpStats] = useState({}); // { playerId: { goles, asistencias, amarilla, roja } }
   const [hpStep, setHpStep] = useState(1); // 1=datos, 2=jugadores
   const [nm, setNm] = useState({
-    home:"Rómulo FC", away:"", date:"", time:"", cat:"Sub-11", field:"", champId:"", fase:"Normal"
+    home:"Rómulo FC", away:"", date:"", time:"", cat:"Sub-11", field:"", champId:"", fase:"Normal", scoreH:"", scoreA:""
   });
   const [editMid, setEditMid] = useState(null);
   const [confirmDelM, setConfirmDelM] = useState(null);
@@ -4026,17 +4136,24 @@ export default function App() {
         fase:    nm.fase    || existing.fase,
         home:    existing.home || "Rómulo FC",
         id:      String(editMid),
+        // Actualizar marcador solo si el partido ya estaba finalizado y se cambian los goles
+        ...(existing.status === "finalizado" && (nm.scoreH!=="" || nm.scoreA!=="") ? {
+          scoreH: nm.scoreH !== "" ? parseInt(nm.scoreH)||0 : existing.scoreH,
+          scoreA: nm.scoreA !== "" ? parseInt(nm.scoreA)||0 : existing.scoreA,
+        } : {}),
       };
       safeSetDoc(doc(db, "matches", String(editMid)), update);
       addNotif("🔄 Partido reprogramado: " + nm.home + " vs " + nm.away + " · " + nm.date, "calendario", "cat:"+nm.cat, "partido");
+      sendPush("🔄 Partido modificado", nm.home+" vs "+nm.away+" · "+nm.date, "calendario", "all", nm.cat);
       setEditMid(null);
     } else {
       const id = String(Date.now());
       const m  = { ...nm, id, scoreH:null, scoreA:null, status:"próximo" };
       safeSetDoc(doc(db, "matches", id), m);
       addNotif("📅 Partido: " + nm.home + " vs " + nm.away + " · " + nm.date, "calendario", "cat:"+nm.cat, "partido");
+      sendPush("⚽ Nuevo Partido", nm.home+" vs "+nm.away+" · "+nm.date, "calendario", "all", nm.cat);
     }
-    setNm({ home:"Rómulo FC", away:"", date:"", time:"", cat:"Sub-11", field:"", champId:"", fase:"Normal" });
+    setNm({ home:"Rómulo FC", away:"", date:"", time:"", cat:"Sub-11", field:"", champId:"", fase:"Normal", scoreH:"", scoreA:"" });
     setShowMForm(false); setFormErr("");
   }
 
@@ -4156,20 +4273,20 @@ export default function App() {
       return CATS_ORDER.indexOf(a.cat) - CATS_ORDER.indexOf(b.cat);
     });
     // Si está minimizado, mostramos el admin con banner flotante
-    if (liveMMinimized) {
-      // Continuar con el renderizado normal del admin (no hacer return aquí)
-    } else {
-      return (
-        <>
-          <style>{CSS}</style>
-          <LiveMatch
-            match={liveM}
-            myPlayers={myPlayers}
-            sanctions={sanc}
-            setSanctions={setSanc}
-            minET={champs.find(c => c.id === liveM.champId)?.minET || 5}
-            onClose={() => { setLiveM(null); setLiveMMinimized(false); }}
-            onMinimize={() => setLiveMMinimized(true)}
+    // LiveMatch siempre montado para preservar cronómetro y estado
+    // Cuando está minimizado se oculta con display:none pero sigue corriendo
+    const liveMatchEl = (
+      <div style={{ display: liveMMinimized ? "none" : "block" }}>
+        <style>{CSS}</style>
+        <LiveMatch
+          match={liveM}
+          myPlayers={myPlayers}
+          sanctions={sanc}
+          setSanctions={setSanc}
+          minET={champs.find(c => c.id === liveM.champId)?.minET || 5}
+          onClose={() => { setLiveM(null); setLiveMMinimized(false); }}
+          onMinimize={() => setLiveMMinimized(true)}
+          onPush={sendPush}
           onSave={r => {
             // Guardar resultado en Firebase
             const matchData = { ...liveM, scoreH:r.scoreH, scoreA:r.scoreA, status:"finalizado",
@@ -4280,72 +4397,235 @@ export default function App() {
               emojRes + " " + res + " · " + liveM.home + " " + r.scoreH + "-" + r.scoreA + " " + liveM.away,
               "calendario", "cat:"+liveM.cat, "resultado"
             );
+            // Push resultado a jugadores y representantes de la categoría
+            sendPush(
+              emojRes + " Resultado: " + res,
+              liveM.home + " " + r.scoreH + "-" + r.scoreA + " " + liveM.away,
+              "calendario", "all", liveM.cat
+            );
 
             // ── Guardar resultado final para el resumen post-partido ──
             setLastMatchResult({ match: liveM, r });
             setLiveM(null);
           }}
         />
-        {/* ── RESUMEN POST-PARTIDO WhatsApp ── */}
+        {/* ── RESUMEN POST-PARTIDO ── */}
         {lastMatchResult && (() => {
           const { match: lm, r } = lastMatchResult;
-          const catPls = players.filter(p => p.cat === lm.cat);
-          // Goleadores
-          const goleadores = Object.entries(r.playerStats || {})
-            .filter(([,ps]) => ps.goles > 0)
-            .map(([pid, ps]) => {
-              const pl = players.find(x => x.id === pid);
-              return pl ? pl.nombre + " " + pl.apellido + " (" + ps.goles + ")" : null;
-            }).filter(Boolean);
-          // MVP
-          const mvpId  = r.mvp?.playerId;
-          const mvpPl  = mvpId ? players.find(x => x.id === mvpId) : null;
-          // Próximo partido de la categoría
-          const proxM  = matches.filter(m => m.status === "próximo" && m.cat === lm.cat)
-            .sort((a,b) => a.id - b.id)[0];
-          // Armar mensaje
-          const esCasa = lm.home === "Rómulo FC" || lm.home?.includes("Rómulo");
-          const gRFC   = esCasa ? r.scoreH : r.scoreA;
-          const gRiv   = esCasa ? r.scoreA : r.scoreH;
-          const res    = gRFC > gRiv ? "✅ VICTORIA" : gRFC < gRiv ? "❌ DERROTA" : "🤝 EMPATE";
-          let msg = res + " ⚽\n\n";
-          msg += "🔵 " + lm.home + " " + r.scoreH + " – " + r.scoreA + " " + lm.away + "\n";
-          msg += "📅 " + lm.date + " · " + lm.cat + "\n";
-          if (goleadores.length > 0) msg += "\n⚽ Goleadores: " + goleadores.join(", ");
-          if (mvpPl) msg += "\n🏅 MVP: " + mvpPl.nombre + " " + mvpPl.apellido;
-          if (proxM) msg += "\n\n📌 Próximo partido: " + proxM.away + " · " + proxM.date + " " + proxM.time;
-          msg += "\n\n¡Gracias por el apoyo! 💙 Rómulo F.C";
+          const catPls  = players.filter(p => p.cat === lm.cat);
+          const esCasa  = (lm.home||"").includes("Rómulo");
+          const gRFC    = esCasa ? r.scoreH : r.scoreA;
+          const gRiv    = esCasa ? r.scoreA : r.scoreH;
+          const res     = gRFC > gRiv ? "VICTORIA" : gRFC < gRiv ? "DERROTA" : "EMPATE";
+          const resEmoj = gRFC > gRiv ? "🏆" : gRFC < gRiv ? "😔" : "🤝";
+          const resCol  = gRFC > gRiv ? "#4caf50" : gRFC < gRiv ? "#E53935" : "#d4b84a";
+          const goleadores = Object.entries(r.playerStats||{}).filter(([,ps])=>ps.goles>0)
+            .map(([pid,ps])=>{ const pl=players.find(x=>x.id===pid); return pl?{pl,goles:ps.goles}:null; })
+            .filter(Boolean).sort((a,b)=>b.goles-a.goles);
+          const asistentes = Object.entries(r.playerStats||{}).filter(([,ps])=>ps.asistencias>0)
+            .map(([pid,ps])=>{ const pl=players.find(x=>x.id===pid); return pl?{pl,asist:ps.asistencias}:null; })
+            .filter(Boolean);
+          const mvpPl  = r.mvp?.playerId ? players.find(x=>x.id===r.mvp.playerId) : null;
+          const proxM  = matches.filter(m=>m.status==="próximo"&&m.cat===lm.cat).sort((a,b)=>a.id-b.id)[0];
+          const eventos = (r.events||[]).slice().reverse(); // cronológico
+
+          // Mensaje WhatsApp
+          let msg = resEmoj+" "+res+" ⚽\n\n";
+          msg += "🔵 "+lm.home+" "+r.scoreH+" – "+r.scoreA+" "+lm.away+"\n";
+          msg += "📅 "+lm.date+" · "+lm.cat+"\n";
+          if (goleadores.length>0) msg += "\n⚽ Goleadores: "+goleadores.map(g=>g.pl.nombre+" ("+g.goles+")").join(", ");
+          if (mvpPl) msg += "\n🏅 MVP: "+mvpPl.nombre+" "+mvpPl.apellido;
+          msg += "\n\n📋 Bitácora:\n";
+          eventos.forEach(e => { msg += e.ico+" "+e.min+"' "+e.txt+"\n"; });
+          if (proxM) msg += "\n📌 Próximo: "+proxM.away+" · "+proxM.date+" "+proxM.time;
+          msg += "\n\n💙 Rómulo F.C";
+
+          // Captura de imagen del resumen
+          async function capturarYCompartir() {
+            const el = document.getElementById("resumen-partido-img");
+            if (!el) return;
+            try {
+              // Usar html2canvas si está disponible, sino screenshot API
+              const script = document.createElement("script");
+              script.src = "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js";
+              script.onload = async () => {
+                const canvas = await window.html2canvas(el, {
+                  backgroundColor: "#04060c",
+                  scale: 2,
+                  useCORS: true,
+                  logging: false,
+                });
+                canvas.toBlob(async blob => {
+                  if (!blob) return;
+                  const file = new File([blob], "romulo-fc-resultado.png", { type:"image/png" });
+                  if (navigator.share && navigator.canShare({ files:[file] })) {
+                    await navigator.share({ files:[file], title:"Rómulo FC - Resultado" });
+                  } else {
+                    // Fallback: descargar
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url; a.download = "romulo-fc-resultado.png";
+                    a.click(); URL.revokeObjectURL(url);
+                  }
+                }, "image/png");
+              };
+              document.head.appendChild(script);
+            } catch(e) { console.warn("captura error:", e); }
+          }
 
           return (
-            <div className="ov" onClick={e => { if(e.target.className==="ov") setLastMatchResult(null); }}>
-              <div className="modal" style={{ borderTop:"3px solid #2196F3" }}>
-                <div className="mt2" style={{ color:"#7ab3e0" }}>
-                  📲 Resumen del Partido
-                  <span className="mx" onClick={() => setLastMatchResult(null)}>✕</span>
+            <div className="ov" onClick={e=>{ if(e.target.className==="ov") setLastMatchResult(null); }}>
+              <div className="modal" style={{ borderTop:"3px solid "+resCol, maxHeight:"92vh", overflowY:"auto", padding:0 }}>
+                <div style={{ padding:"12px 14px 0" }}>
+                  <div className="mt2" style={{ color:resCol }}>
+                    📊 Resumen del Partido
+                    <span className="mx" onClick={()=>setLastMatchResult(null)}>✕</span>
+                  </div>
                 </div>
-                <div style={{ fontSize:9, color:"var(--txt3)", marginBottom:10 }}>
-                  Envía el resumen a representantes y jugadores de {lm.cat}
+
+                {/* ── BLOQUE CAPTURADO COMO IMAGEN ── */}
+                <div id="resumen-partido-img" style={{ background:"#04060c", padding:"16px 14px" }}>
+
+                  {/* Header */}
+                  <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
+                    marginBottom:12 }}>
+                    <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:18,
+                      letterSpacing:2, lineHeight:1 }}>
+                      <span style={{ color:"#2196F3" }}>RÓMULO</span>{" "}
+                      <span style={{ color:"#E53935" }}>F.C</span>
+                    </div>
+                    <div style={{ fontSize:8, color:"var(--txt3)", textAlign:"right" }}>
+                      {lm.cat} · {lm.date}
+                    </div>
+                  </div>
+
+                  {/* Marcador */}
+                  <div style={{ background:"rgba(21,101,192,.08)", borderRadius:10,
+                    padding:"14px 10px", textAlign:"center", marginBottom:12,
+                    border:"1px solid rgba(33,150,243,.12)" }}>
+                    <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+                      <div style={{ flex:1, textAlign:"right", fontSize:9, color:"var(--txt2)" }}>{lm.home}</div>
+                      <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:48,
+                        color:resCol, lineHeight:1, letterSpacing:2 }}>
+                        {r.scoreH}<span style={{ fontSize:24, color:"var(--txt3)", margin:"0 4px" }}>—</span>{r.scoreA}
+                      </div>
+                      <div style={{ flex:1, textAlign:"left", fontSize:9, color:"#e8a0a0" }}>{lm.away}</div>
+                    </div>
+                    <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:16,
+                      color:resCol, letterSpacing:2, marginTop:4 }}>
+                      {resEmoj} {res}
+                    </div>
+                  </div>
+
+                  {/* MVP */}
+                  {mvpPl && (
+                    <div style={{ display:"flex", alignItems:"center", gap:8,
+                      background:"rgba(212,184,74,.08)", borderRadius:8, padding:"8px 10px",
+                      border:"1px solid rgba(212,184,74,.18)", marginBottom:10 }}>
+                      <span style={{ fontSize:16 }}>🏅</span>
+                      <div>
+                        <div style={{ fontSize:7.5, color:"#8a7040", textTransform:"uppercase", letterSpacing:.5 }}>MVP</div>
+                        <div style={{ fontSize:11, fontWeight:700, color:"#d4b84a" }}>
+                          {mvpPl.nombre} {mvpPl.apellido}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Goleadores */}
+                  {goleadores.length>0 && (
+                    <div style={{ marginBottom:10 }}>
+                      <div style={{ fontSize:7.5, color:"var(--txt3)", textTransform:"uppercase",
+                        letterSpacing:.5, marginBottom:5 }}>⚽ Goleadores</div>
+                      {goleadores.map(({pl,goles},i)=>(
+                        <div key={i} style={{ display:"flex", justifyContent:"space-between",
+                          padding:"4px 6px", background:"rgba(255,255,255,.02)",
+                          borderRadius:5, marginBottom:2, fontSize:10 }}>
+                          <span>{pl.nombre} {pl.apellido}</span>
+                          <span style={{ color:"#d4b84a", fontFamily:"'Bebas Neue',sans-serif" }}>
+                            {goles} {goles>1?"goles":"gol"}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Asistencias */}
+                  {asistentes.length>0 && (
+                    <div style={{ marginBottom:10 }}>
+                      <div style={{ fontSize:7.5, color:"var(--txt3)", textTransform:"uppercase",
+                        letterSpacing:.5, marginBottom:5 }}>🎯 Asistencias</div>
+                      {asistentes.map(({pl,asist},i)=>(
+                        <div key={i} style={{ display:"flex", justifyContent:"space-between",
+                          padding:"4px 6px", background:"rgba(255,255,255,.02)",
+                          borderRadius:5, marginBottom:2, fontSize:10 }}>
+                          <span>{pl.nombre} {pl.apellido}</span>
+                          <span style={{ color:"#7ab3e0", fontFamily:"'Bebas Neue',sans-serif" }}>{asist}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Bitácora */}
+                  <div>
+                    <div style={{ fontSize:7.5, color:"var(--txt3)", textTransform:"uppercase",
+                      letterSpacing:.5, marginBottom:5 }}>📋 Bitácora</div>
+                    <div style={{ display:"flex", flexDirection:"column", gap:3 }}>
+                      {eventos.map((e,i)=>(
+                        <div key={i} style={{ display:"flex", alignItems:"center", gap:8,
+                          padding:"5px 8px", background:"rgba(255,255,255,.02)",
+                          borderRadius:6, fontSize:9 }}>
+                          <span style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:13,
+                            color:"var(--txt2)", minWidth:24 }}>{e.min}'</span>
+                          <span style={{ fontSize:13 }}>{e.ico}</span>
+                          <span style={{ flex:1, color:"var(--txt)" }}>{e.txt}</span>
+                          <span style={{ fontSize:8, color:"var(--txt4)",
+                            background:"rgba(255,255,255,.04)", padding:"1px 5px", borderRadius:3 }}>
+                            {e.period===1?"1T":e.period===2?"2T":e.period===3?"ET1":"ET2"}
+                          </span>
+                        </div>
+                      ))}
+                      {eventos.length===0 && (
+                        <div style={{ fontSize:8.5, color:"var(--txt4)", textAlign:"center", padding:"6px 0" }}>
+                          Sin eventos registrados
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Footer imagen */}
+                  <div style={{ marginTop:12, textAlign:"center", fontSize:7.5,
+                    color:"var(--txt4)", letterSpacing:1 }}>
+                    romulo-fc.pages.dev
+                  </div>
                 </div>
-                <div style={{ background:"var(--card)", borderRadius:8, padding:"10px", marginBottom:10,
-                  fontSize:9, whiteSpace:"pre-wrap", color:"var(--txt)", border:"1px solid rgba(33,150,243,.1)" }}>
-                  {msg}
-                </div>
-                <div style={{ fontSize:8, color:"var(--txt4)", marginBottom:6 }}>
-                  {catPls.length} contactos en {lm.cat}
-                </div>
-                <div style={{ display:"flex", gap:7 }}>
-                  <button className="btn" style={{ flex:1 }}
-                    onClick={() => {
-                      catPls.forEach((p, i) => {
-                        setTimeout(() => {
-                          if (p.tel)    openWA(p.tel,    msg);
-                          if (p.repTel) setTimeout(() => openWA(p.repTel, msg), 600);
-                        }, i * 1500);
+                {/* fin bloque imagen */}
+
+                {/* ── BOTONES ── */}
+                <div style={{ padding:"10px 14px 14px", display:"flex", flexDirection:"column", gap:7 }}>
+                  {/* Compartir como imagen */}
+                  <button className="btn" style={{ background:"rgba(21,101,192,.2)",
+                    border:"1px solid rgba(33,150,243,.3)", color:"#7ab3e0" }}
+                    onClick={capturarYCompartir}>
+                    🖼️ Compartir como imagen
+                  </button>
+                  {/* Enviar por WhatsApp */}
+                  <button className="btn" style={{ background:"rgba(37,211,102,.12)",
+                    border:"1px solid rgba(37,211,102,.25)", color:"#25d366" }}
+                    onClick={()=>{
+                      catPls.forEach((p,i)=>{
+                        setTimeout(()=>{
+                          if(p.tel)    openWA(p.tel,    msg);
+                          if(p.repTel) setTimeout(()=>openWA(p.repTel,msg),600);
+                        }, i*1500);
                       });
                     }}>
-                    📲 Enviar a todos ({catPls.length})
+                    📲 Enviar por WhatsApp ({catPls.length})
                   </button>
-                  <button className="btn-sm" onClick={() => setLastMatchResult(null)}>Omitir</button>
+                  <button className="btn-sm" style={{ width:"100%" }}
+                    onClick={()=>setLastMatchResult(null)}>
+                    Omitir
+                  </button>
                 </div>
               </div>
             </div>
@@ -4354,7 +4634,6 @@ export default function App() {
         <ConfirmDialog cfg={conf} onClose={() => setConf(null)} />
       </>
     );
-    } // fin if !liveMMinimized
   }
 
   // ── LOGIN ──────────────────────────────────
@@ -7879,7 +8158,7 @@ export default function App() {
                 {can("calendario") && (
                   <>
                     <button className="btn-sm" style={{ padding:"8px 12px", fontSize:11 }} onClick={() => {
-                      setNm({ home: m.home||"Rómulo FC", away: m.away||"", date: m.date||"", time: m.time||"", cat: m.cat||"Sub-11", field: m.field||"", champId: m.champId||"", fase: m.fase||"Normal" });
+                      setNm({ home: m.home||"Rómulo FC", away: m.away||"", date: m.date||"", time: m.time||"", cat: m.cat||"Sub-11", field: m.field||"", champId: m.champId||"", fase: m.fase||"Normal", scoreH: m.scoreH??m.scoreH??(""), scoreA: m.scoreA??m.scoreA??("") });
                       setEditMid(m.id);
                       setShowMForm(true);
                       setFormErr("");
@@ -7946,6 +8225,36 @@ export default function App() {
                     </div>
                   </div>
                 )}
+                {/* Marcador — solo visible al editar partido finalizado */}
+                {editMid && (() => {
+                  const mEdit = matches.find(m => String(m.id)===String(editMid));
+                  return mEdit?.status === "finalizado" ? (
+                    <div style={{ marginBottom:8 }}>
+                      <div className="inp-lbl">Marcador</div>
+                      <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                        <div style={{ flex:1 }}>
+                          <div style={{ fontSize:7.5, color:"var(--txt3)", marginBottom:3, textAlign:"center" }}>
+                            {mEdit.home||"RFC"}
+                          </div>
+                          <input className="inp" type="number" min="0" value={nm.scoreH}
+                            onChange={e=>setNm(n=>({...n,scoreH:e.target.value}))}
+                            style={{ textAlign:"center", fontSize:24,
+                              fontFamily:"'Bebas Neue',sans-serif", color:"#7ab3e0", padding:"6px 0" }}/>
+                        </div>
+                        <div style={{ fontSize:18, color:"var(--txt3)", fontFamily:"'Bebas Neue',sans-serif", paddingTop:18 }}>—</div>
+                        <div style={{ flex:1 }}>
+                          <div style={{ fontSize:7.5, color:"var(--txt3)", marginBottom:3, textAlign:"center" }}>
+                            {mEdit.away||"Rival"}
+                          </div>
+                          <input className="inp" type="number" min="0" value={nm.scoreA}
+                            onChange={e=>setNm(n=>({...n,scoreA:e.target.value}))}
+                            style={{ textAlign:"center", fontSize:24,
+                              fontFamily:"'Bebas Neue',sans-serif", color:"#e8a0a0", padding:"6px 0" }}/>
+                        </div>
+                      </div>
+                    </div>
+                  ) : null;
+                })()}
                 {formErr && <div className="err">⚠️ {formErr}</div>}
                 <div className="inp-wrap" style={{ marginTop:6 }}>
                   <div className="inp-lbl">Campeonato (opcional)</div>
@@ -8779,14 +9088,21 @@ export default function App() {
         if (!nt.fecha || !nt.hora || !nt.lugar || nt.cats.length===0) {
           setFormErr("Fecha, hora, lugar y categoría son obligatorios"); return;
         }
+        const catsNotif = nt.cats || [];
+        const paraEntreno = catsNotif.length === 1 ? "cat:"+catsNotif[0] : "all";
+        const fechaLeg = nt.fecha ? new Date(nt.fecha+"T12:00:00").toLocaleDateString("es",{weekday:"short",day:"numeric",month:"short"}) : nt.fecha;
+
         if (editTrain) {
           safeSetDoc(doc(db,"trainings",String(editTrain)), { ...nt, id:String(editTrain) });
+          // Push: entrenamiento reprogramado
+          sendPush(
+            "🔄 Entrenamiento Modificado",
+            (nt.tema||"Entrenamiento")+" · "+fechaLeg+" "+nt.hora+" · "+nt.lugar,
+            "entrenos", "all", catsNotif[0]||null
+          );
           setEditTrain(null);
         } else {
-          // Crear la sesión principal
-          const ids = [];
           if (nt.repetir && nt.repetirSemanas > 1) {
-            // Crear N sesiones semanales a partir de la fecha dada
             const [y,m,d] = nt.fecha.split("-").map(Number);
             for (let i=0; i<(parseInt(nt.repetirSemanas)||4); i++) {
               const fd = new Date(y,m-1,d + i*7);
@@ -8794,9 +9110,21 @@ export default function App() {
               const id = String(Date.now()+i);
               safeSetDoc(doc(db,"trainings",id), { ...nt, fecha:fStr, id, repetir:false });
             }
+            // Push: nuevo ciclo de entrenamientos
+            sendPush(
+              "🏃 Nuevos Entrenamientos Programados",
+              (nt.repetirSemanas||4)+" sesiones · "+nt.lugar+" · desde "+fechaLeg,
+              "entrenos", "all", catsNotif[0]||null
+            );
           } else {
             const id = String(Date.now());
             safeSetDoc(doc(db,"trainings",id), { ...nt, id, repetir:false });
+            // Push: nuevo entrenamiento
+            sendPush(
+              "🏃 Nuevo Entrenamiento",
+              (nt.tema||"Entrenamiento")+" · "+fechaLeg+" "+nt.hora+" · "+nt.lugar,
+              "entrenos", "all", catsNotif[0]||null
+            );
           }
         }
         setNt(NT_BLANK_T); setShowTFormT(false); setFormErr(""); setEditTrain(null);
@@ -10067,6 +10395,76 @@ export default function App() {
             })}
           </div>
 
+          {/* ── PREFERENCIAS DE NOTIFICACIONES ── */}
+          {(role === "player" || role === "rep") && pushStatus === "granted" && (
+            <div className="card" style={{ marginBottom:8 }}>
+              <div className="ch">
+                <span className="ct">🔔 Notificaciones</span>
+              </div>
+              <p style={{ fontSize:8.5, color:"var(--txt3)", marginBottom:10, lineHeight:1.5 }}>
+                Recibes notificaciones de <strong style={{ color:"var(--txt)" }}>todas las categorías</strong> por defecto.
+                Desactiva las que no te interesen.
+              </p>
+              <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+                {CATS.map(cat => {
+                  const desact = (user.notifsDesact || []).includes(cat);
+                  return (
+                    <div key={cat}
+                      style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
+                        padding:"8px 10px", borderRadius:8,
+                        background: desact ? "rgba(255,255,255,.02)" : "rgba(21,101,192,.08)",
+                        border:`1px solid ${desact ? "rgba(255,255,255,.05)" : "rgba(33,150,243,.2)"}` }}>
+                      <div>
+                        <span style={{ fontSize:10, fontWeight:600,
+                          color: desact ? "var(--txt3)" : "var(--txt)" }}>{cat}</span>
+                        {cat === user.cat && (
+                          <span className="bg bg-b" style={{ marginLeft:6, fontSize:7 }}>Mi categoría</span>
+                        )}
+                      </div>
+                      {/* Toggle ON/OFF */}
+                      <div
+                        onClick={async () => {
+                          if (!can("pagos") && cat === user.cat) return; // no puede desactivar su propia cat
+                          const prev = user.notifsDesact || [];
+                          const next = desact
+                            ? prev.filter(x => x !== cat)
+                            : [...prev, cat];
+                          // Actualizar en Firebase (coaches o players según rol)
+                          const col = role === "player" ? "players" : "coaches";
+                          const uid = user.playerId || user.id;
+                          if (uid) await safeSetDoc(doc(db, col, String(uid)),
+                            { notifsDesact: next }, { merge: true });
+                          // También actualizar el token FCM
+                          const deviceId = (await import("firebase/messaging")
+                            .then(m => m.getToken(messaging, { vapidKey: VAPID_KEY }))
+                            .catch(()=>null));
+                          if (deviceId) {
+                            const tid = deviceId.slice(-20);
+                            await safeSetDoc(doc(db,"fcm_tokens",tid),
+                              { notifsDesact: next }, { merge: true });
+                          }
+                        }}
+                        style={{ width:40, height:22, borderRadius:11, cursor: cat===user.cat?"not-allowed":"pointer",
+                          background: desact ? "rgba(255,255,255,.08)" : "#1565C0",
+                          border:`1px solid ${desact?"rgba(255,255,255,.1)":"rgba(33,150,243,.5)"}`,
+                          position:"relative", transition:"all .2s",
+                          opacity: cat===user.cat ? .4 : 1 }}>
+                        <div style={{ position:"absolute", top:2,
+                          left: desact ? 2 : 20,
+                          width:16, height:16, borderRadius:"50%",
+                          background: desact ? "rgba(255,255,255,.3)" : "#fff",
+                          transition:"left .2s" }}/>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{ fontSize:7.5, color:"var(--txt4)", marginTop:8, lineHeight:1.4 }}>
+                ⚠️ No puedes desactivar notificaciones de tu propia categoría ({user.cat}).
+              </div>
+            </div>
+          )}
+
           {/* ── CERRAR SESIÓN ── */}
           <div className="card card-r">
             <div className="ch"><span className="ct">Sesión Activa</span></div>
@@ -10086,6 +10484,8 @@ export default function App() {
   return (
     <>
       <style>{CSS}</style>
+      {/* LiveMatch oculto pero montado cuando está minimizado — preserva cronómetro */}
+      {liveM && liveMMinimized && liveMatchEl}
       <div className="app">
         <div className="hdr">
           <div className="hdr-row">
@@ -11368,23 +11768,30 @@ export default function App() {
             }
 
             // Actualizar stats — solo los convocados suman partido
-            const convIds = convocadosIds || Object.keys(playerStats).map(Number);
-            const convPls = players.filter(p => convIds.map(String).includes(String(p.id)));
+            const convIds = convocadosIds?.map(String) || Object.keys(playerStats).map(String);
+            const convPls = players.filter(p => convIds.includes(String(p.id)));
             convPls.forEach(pl => {
-              const ps  = playerStats[pl.id] || {};
+              // Buscar stats por id como string o número
+              const ps  = playerStats[pl.id] || playerStats[String(pl.id)] || {};
               const cur = pl.stats || {goles:0,asistencias:0,partidos:0};
               safeSetDoc(doc(db,"players",String(pl.id)),{...pl, stats:{
                 goles:       (cur.goles||0)+(ps.goles||0),
                 asistencias: (cur.asistencias||0)+(ps.asistencias||0),
                 partidos:    (cur.partidos||0)+1,
               }});
-              if (ps.amarilla||ps.roja) {
+              // Tarjetas — buscar en events del partido
+              const plEvents = (events||[]).filter(e =>
+                (e.type==="y_us"||e.type==="r_us") && e.txt?.includes(pl.nombre)
+              );
+              const amarillas = plEvents.filter(e=>e.type==="y_us").length;
+              const rojas     = plEvents.filter(e=>e.type==="r_us").length;
+              if (amarillas > 0 || rojas > 0 || ps.amarilla || ps.roja) {
                 const sc=sanc[pl.id]||{yellows:0,reds:0,suspended:false};
                 safeSetDoc(doc(db,"sanc",String(pl.id)),{
                   ...sc,
-                  yellows:(sc.yellows||0)+(ps.amarilla?1:0),
-                  reds:(sc.reds||0)+(ps.roja?1:0),
-                  suspended:ps.roja?true:sc.suspended,
+                  yellows:(sc.yellows||0)+amarillas+(ps.amarilla?1:0),
+                  reds:   (sc.reds||0)+rojas+(ps.roja?1:0),
+                  suspended:(rojas>0||ps.roja)?true:sc.suspended,
                 });
               }
             });
@@ -11412,6 +11819,7 @@ export default function App() {
 
             const res=sH>sA?"🏆 VICTORIA":sH<sA?"😔 DERROTA":"🤝 EMPATE";
             addNotif(res+" · "+quickResult.home+" "+sH+"-"+sA+" "+quickResult.away,"calendario","cat:"+quickResult.cat,"resultado");
+            sendPush("📊 Resultado: "+res, quickResult.home+" "+sH+"-"+sA+" "+quickResult.away, "calendario", "all", quickResult.cat);
             setQuickResult(null);
           }}
         />
