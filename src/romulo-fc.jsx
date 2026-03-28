@@ -11643,188 +11643,145 @@ export default function App() {
         const bitacora = [...evs].reverse();
 
         return (
-          <div style={{ position:"fixed", inset:0, background:"#04060c",
-            zIndex:1000, overflowY:"auto", display:"flex", flexDirection:"column" }}>
+          <div className="modal" style={{ borderTop:"3px solid "+resCol, maxHeight:"92vh", overflowY:"auto" }}>
 
-            {/* ── HEADER ── */}
-            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
-              padding:"14px 16px 10px", borderBottom:"1px solid rgba(33,150,243,.08)",
-              background:"#04060c", position:"sticky", top:0, zIndex:2 }}>
-              <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:20, letterSpacing:3 }}>
-                <span style={{ color:"#2196F3" }}>RÓMULO</span>{" "}
-                <span style={{ color:"#E53935" }}>F.C</span>
+            {/* Header compacto */}
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:8 }}>
+              <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:15, letterSpacing:2 }}>
+                <span style={{ color:"#2196F3" }}>RÓMULO</span> <span style={{ color:"#E53935" }}>F.C</span>
+                <span style={{ fontSize:8, color:"var(--txt3)", fontFamily:"sans-serif", marginLeft:6 }}>{m.cat} · {m.date}</span>
               </div>
-              <div style={{ display:"flex", gap:8, alignItems:"center" }}>
-                <div style={{ fontSize:8, color:"var(--txt3)", textAlign:"right", lineHeight:1.4 }}>
-                  {m.cat}<br/>{m.date}
-                </div>
+              <div style={{ display:"flex", gap:6 }}>
                 {can("partido") && (
-                  <button className="btn-sm" style={{ fontSize:8,
+                  <button className="btn-sm" style={{ fontSize:7.5, padding:"2px 7px",
                     background:"rgba(212,184,74,.08)", borderColor:"rgba(212,184,74,.2)", color:"#d4b84a" }}
-                    onClick={()=>{ setEditConvModal(m); setMatchDetail(null); }}>
-                    ✏️ Editar
-                  </button>
+                    onClick={()=>{ setEditConvModal(m); setMatchDetail(null); }}>✏️</button>
                 )}
-                <span style={{ fontSize:22, cursor:"pointer", color:"var(--txt3)", padding:"0 4px" }}
+                <span style={{ cursor:"pointer", color:"var(--txt3)", fontSize:18 }}
                   onClick={()=>setMatchDetail(null)}>✕</span>
               </div>
             </div>
 
-            <div style={{ padding:"0 16px 32px", flex:1 }}>
+            {/* Marcador compacto */}
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"center",
+              gap:8, padding:"10px 0 6px", marginBottom:8,
+              borderTop:"1px solid rgba(33,150,243,.08)",
+              borderBottom:"1px solid rgba(33,150,243,.08)" }}>
+              <div style={{ flex:1, textAlign:"right", fontSize:9, color:"var(--txt2)", fontWeight:600 }}>{m.home}</div>
+              <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:44, color:resCol,
+                lineHeight:1, letterSpacing:3, textShadow:"0 0 20px "+resCol+"55" }}>
+                {m.scoreH??"—"}<span style={{ fontSize:20, color:"rgba(255,255,255,.2)", margin:"0 4px" }}>—</span>{m.scoreA??"—"}
+              </div>
+              <div style={{ flex:1, textAlign:"left", fontSize:9, color:"#e8a0a0", fontWeight:600 }}>{m.away}</div>
+            </div>
+            <div style={{ textAlign:"center", marginBottom:10 }}>
+              <span style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:13,
+                color:resCol, letterSpacing:3 }}>{res}</span>
+            </div>
 
-              {/* ── MARCADOR GRANDE ── */}
-              <div style={{ textAlign:"center", padding:"28px 0 20px",
-                borderBottom:"1px solid rgba(33,150,243,.08)", marginBottom:20 }}>
-                <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:16, marginBottom:8 }}>
-                  <div style={{ flex:1, textAlign:"right" }}>
-                    <div style={{ fontSize:11, color:"#7ab3e0", fontWeight:600, marginBottom:4 }}>{m.home}</div>
+            {/* MVP */}
+            {(mvpPl||m.mvp?.nombre) && (
+              <div style={{ display:"flex", alignItems:"center", gap:8, padding:"6px 8px",
+                background:"rgba(212,184,74,.07)", borderRadius:8, marginBottom:8,
+                border:"1px solid rgba(212,184,74,.15)" }}>
+                <span style={{ fontSize:14 }}>🏅</span>
+                <div>
+                  <div style={{ fontSize:7, color:"#8a7040", textTransform:"uppercase", letterSpacing:.5 }}>MVP</div>
+                  <div style={{ fontSize:11, fontWeight:700, color:"#d4b84a" }}>
+                    {mvpPl?mvpPl.nombre+" "+mvpPl.apellido:m.mvp?.nombre+" "+(m.mvp?.apellido||"")}
                   </div>
-                  <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:72,
-                    color:resCol, lineHeight:1, letterSpacing:4,
-                    textShadow:"0 0 40px "+resCol+"44" }}>
-                    {m.scoreH??"—"}<span style={{ fontSize:36, color:"rgba(255,255,255,.15)", margin:"0 8px" }}>—</span>{m.scoreA??"—"}
-                  </div>
-                  <div style={{ flex:1, textAlign:"left" }}>
-                    <div style={{ fontSize:11, color:"#e8a0a0", fontWeight:600, marginBottom:4 }}>{m.away}</div>
-                  </div>
-                </div>
-                <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:22,
-                  color:resCol, letterSpacing:4,
-                  background:"rgba(0,0,0,.2)", display:"inline-block",
-                  padding:"4px 20px", borderRadius:6 }}>
-                  {res}
                 </div>
               </div>
+            )}
 
-              {/* ── MVP ── */}
-              {(mvpPl||m.mvp?.nombre) && (
-                <div style={{ display:"flex", alignItems:"center", gap:12,
-                  background:"rgba(212,184,74,.07)", borderRadius:12, padding:"12px 14px",
-                  border:"1px solid rgba(212,184,74,.18)", marginBottom:16 }}>
-                  <span style={{ fontSize:24 }}>🏅</span>
-                  <div>
-                    <div style={{ fontSize:8, color:"#8a7040", textTransform:"uppercase",
-                      letterSpacing:1, marginBottom:2 }}>MVP del Partido</div>
-                    <div style={{ fontSize:14, fontWeight:700, color:"#d4b84a" }}>
-                      {mvpPl?mvpPl.nombre+" "+mvpPl.apellido:m.mvp?.nombre+" "+(m.mvp?.apellido||"")}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* ── GOLEADORES ── */}
+            {/* Goleadores + Disciplina en fila */}
+            <div style={{ display:"flex", gap:8, marginBottom:8 }}>
               {goleadores.length > 0 && (
-                <div style={{ marginBottom:16 }}>
-                  <div style={{ fontSize:8.5, color:"var(--txt3)", textTransform:"uppercase",
-                    letterSpacing:1.5, marginBottom:8, display:"flex", alignItems:"center", gap:6 }}>
-                    <div style={{ width:16, height:1, background:"var(--txt3)" }}/>
-                    Goleadores
-                  </div>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontSize:7.5, color:"var(--txt3)", textTransform:"uppercase",
+                    letterSpacing:1, marginBottom:4 }}>⚽ Goles</div>
                   {goleadores.map(({pl,goles,asist},i)=>(
                     <div key={i} style={{ display:"flex", justifyContent:"space-between",
-                      alignItems:"center", padding:"10px 12px", marginBottom:4,
-                      background:"rgba(255,255,255,.02)", borderRadius:8,
+                      padding:"3px 6px", fontSize:9, marginBottom:2,
+                      background:"rgba(255,255,255,.02)", borderRadius:5,
                       borderLeft:"2px solid #d4b84a" }}>
-                      <span style={{ fontSize:12 }}>{pl.nombre} {pl.apellido}</span>
-                      <div style={{ display:"flex", gap:8, fontSize:11 }}>
-                        <span style={{ color:"#d4b84a", fontFamily:"'Bebas Neue',sans-serif",
-                          fontSize:16 }}>⚽ {goles}</span>
-                        {asist>0&&<span style={{ color:"#7ab3e0" }}>🎯 {asist}</span>}
-                      </div>
+                      <span style={{ color:"var(--txt)" }}>{pl.nombre}</span>
+                      <span style={{ color:"#d4b84a", fontFamily:"'Bebas Neue',sans-serif" }}>
+                        ⚽{goles}{asist>0?` 🎯${asist}`:""}
+                      </span>
                     </div>
                   ))}
                 </div>
               )}
-
-              {/* ── DISCIPLINA ── */}
               {(amarillas.length>0||rojas.length>0) && (
-                <div style={{ marginBottom:16 }}>
-                  <div style={{ fontSize:8.5, color:"var(--txt3)", textTransform:"uppercase",
-                    letterSpacing:1.5, marginBottom:8, display:"flex", alignItems:"center", gap:6 }}>
-                    <div style={{ width:16, height:1, background:"var(--txt3)" }}/>
-                    Disciplina
-                  </div>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontSize:7.5, color:"var(--txt3)", textTransform:"uppercase",
+                    letterSpacing:1, marginBottom:4 }}>🟨 Disciplina</div>
                   {amarillas.map((n,i)=>(
-                    <div key={"y"+i} style={{ display:"flex", alignItems:"center", gap:10,
-                      padding:"8px 12px", marginBottom:4, background:"rgba(212,184,74,.06)",
-                      borderRadius:8, borderLeft:"2px solid #d4b84a" }}>
-                      <span style={{ fontSize:16 }}>🟨</span>
-                      <span style={{ fontSize:11 }}>{n}</span>
+                    <div key={"y"+i} style={{ display:"flex", alignItems:"center", gap:4,
+                      padding:"3px 6px", fontSize:9, marginBottom:2,
+                      background:"rgba(212,184,74,.06)", borderRadius:5 }}>
+                      <span>🟨</span><span style={{ color:"var(--txt)" }}>{n}</span>
                     </div>
                   ))}
                   {rojas.map((n,i)=>(
-                    <div key={"r"+i} style={{ display:"flex", alignItems:"center", gap:10,
-                      padding:"8px 12px", marginBottom:4, background:"rgba(229,57,53,.06)",
-                      borderRadius:8, borderLeft:"2px solid #E53935" }}>
-                      <span style={{ fontSize:16 }}>🟥</span>
-                      <span style={{ fontSize:11 }}>{n}</span>
+                    <div key={"r"+i} style={{ display:"flex", alignItems:"center", gap:4,
+                      padding:"3px 6px", fontSize:9, marginBottom:2,
+                      background:"rgba(229,57,53,.06)", borderRadius:5 }}>
+                      <span>🟥</span><span style={{ color:"var(--txt)" }}>{n}</span>
                     </div>
                   ))}
                 </div>
               )}
+            </div>
 
-              {/* ── CONVOCADOS ── */}
-              {convPls.length > 0 && (
-                <div style={{ marginBottom:16 }}>
-                  <div style={{ fontSize:8.5, color:"var(--txt3)", textTransform:"uppercase",
-                    letterSpacing:1.5, marginBottom:8, display:"flex", alignItems:"center", gap:6 }}>
-                    <div style={{ width:16, height:1, background:"var(--txt3)" }}/>
-                    Convocados ({convPls.length})
-                  </div>
-                  <div style={{ display:"flex", flexWrap:"wrap", gap:5 }}>
-                    {convPls.map(pl=>{
-                      const s=ps[pl.id]||{};
-                      const tieneStats=s.goles>0||s.asistencias>0;
-                      return (
-                        <div key={pl.id} style={{ padding:"5px 10px", borderRadius:20, fontSize:9.5,
-                          background: tieneStats?"rgba(21,101,192,.15)":"rgba(255,255,255,.04)",
-                          border:"1px solid "+(tieneStats?"rgba(33,150,243,.25)":"rgba(255,255,255,.08)"),
-                          color: tieneStats?"#7ab3e0":"var(--txt3)" }}>
-                          {pl.nombre} {pl.apellido}
-                          {s.goles>0&&<span style={{ color:"#d4b84a", marginLeft:4 }}>⚽{s.goles}</span>}
-                          {s.asistencias>0&&<span style={{ color:"#7ab3e0", marginLeft:3 }}>🎯{s.asistencias}</span>}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* ── BITÁCORA ── */}
-              {bitacora.length > 0 && (
-                <div style={{ marginBottom:16 }}>
-                  <div style={{ fontSize:8.5, color:"var(--txt3)", textTransform:"uppercase",
-                    letterSpacing:1.5, marginBottom:8, display:"flex", alignItems:"center", gap:6 }}>
-                    <div style={{ width:16, height:1, background:"var(--txt3)" }}/>
-                    Bitácora
-                  </div>
-                  <div style={{ display:"flex", flexDirection:"column", gap:3 }}>
-                    {bitacora.map((e,i)=>(
-                      <div key={i} style={{ display:"flex", alignItems:"center", gap:10,
-                        padding:"8px 12px", background:"rgba(255,255,255,.02)",
-                        borderRadius:8 }}>
-                        <span style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:16,
-                          color:"var(--txt2)", minWidth:30 }}>{e.min}'</span>
-                        <span style={{ fontSize:16, flexShrink:0 }}>{e.ico}</span>
-                        <span style={{ flex:1, fontSize:11, color:"var(--txt)" }}>{e.txt}</span>
-                        <span style={{ fontSize:8, color:"var(--txt4)",
-                          background:"rgba(255,255,255,.05)", padding:"2px 6px", borderRadius:4 }}>
-                          {e.period===1?"1T":e.period===2?"2T":e.period===3?"ET1":"ET2"}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* ── FOOTER ── */}
-              <div style={{ textAlign:"center", paddingTop:16,
-                borderTop:"1px solid rgba(33,150,243,.06)" }}>
-                <div style={{ fontSize:8, color:"var(--txt4)", letterSpacing:2 }}>
-                  romulo-fc.pages.dev
+            {/* Convocados */}
+            {convPls.length > 0 && (
+              <div style={{ marginBottom:8 }}>
+                <div style={{ fontSize:7.5, color:"var(--txt3)", textTransform:"uppercase",
+                  letterSpacing:1, marginBottom:4 }}>👥 Convocados ({convPls.length})</div>
+                <div style={{ display:"flex", flexWrap:"wrap", gap:3 }}>
+                  {convPls.map(pl=>{
+                    const s=ps[pl.id]||{};
+                    return (
+                      <span key={pl.id} style={{ padding:"2px 7px", borderRadius:20, fontSize:8,
+                        background:"rgba(255,255,255,.04)", border:"1px solid rgba(255,255,255,.07)",
+                        color:"var(--txt3)" }}>
+                        {pl.nombre}{s.goles>0?` ⚽${s.goles}`:""}
+                      </span>
+                    );
+                  })}
                 </div>
               </div>
+            )}
 
+            {/* Bitácora */}
+            {bitacora.length > 0 && (
+              <div style={{ marginBottom:8 }}>
+                <div style={{ fontSize:7.5, color:"var(--txt3)", textTransform:"uppercase",
+                  letterSpacing:1, marginBottom:4 }}>📋 Bitácora</div>
+                <div style={{ display:"flex", flexDirection:"column", gap:2 }}>
+                  {bitacora.map((e,i)=>(
+                    <div key={i} style={{ display:"flex", alignItems:"center", gap:6,
+                      padding:"3px 6px", background:"rgba(255,255,255,.02)", borderRadius:5 }}>
+                      <span style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:11,
+                        color:"var(--txt2)", minWidth:22, flexShrink:0 }}>{e.min}'</span>
+                      <span style={{ fontSize:11, flexShrink:0 }}>{e.ico}</span>
+                      <span style={{ flex:1, fontSize:8.5, color:"var(--txt)" }}>{e.txt}</span>
+                      <span style={{ fontSize:7, color:"var(--txt4)",
+                        background:"rgba(255,255,255,.05)", padding:"1px 4px", borderRadius:3, flexShrink:0 }}>
+                        {e.period===1?"1T":e.period===2?"2T":"ET"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Footer */}
+            <div style={{ textAlign:"center", paddingTop:6,
+              borderTop:"1px solid rgba(33,150,243,.05)", fontSize:7, color:"var(--txt4)", letterSpacing:1 }}>
+              romulo-fc.pages.dev
             </div>
           </div>
         );
