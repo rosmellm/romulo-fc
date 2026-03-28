@@ -11640,6 +11640,36 @@ export default function App() {
                 📊 Resumen del Partido
                 <span className="mx" onClick={()=>setMatchDetail(null)}>✕</span>
               </div>
+              {/* Botón compartir como imagen */}
+              <button className="btn-sm" style={{ width:"100%", marginBottom:10, fontSize:8.5,
+                background:"rgba(21,101,192,.12)", borderColor:"rgba(33,150,243,.25)", color:"#7ab3e0" }}
+                onClick={async()=>{
+                  const el = document.getElementById("detalle-partido-img");
+                  if(!el) return;
+                  const s = document.createElement("script");
+                  s.src = "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js";
+                  s.onload = async () => {
+                    const canvas = await window.html2canvas(el,{backgroundColor:"#04060c",scale:2,useCORS:true,logging:false});
+                    canvas.toBlob(async blob=>{
+                      if(!blob) return;
+                      const file = new File([blob],"romulo-fc-partido.png",{type:"image/png"});
+                      if(navigator.share && navigator.canShare({files:[file]})){
+                        await navigator.share({files:[file], title:"Rómulo FC — Resultado"});
+                      } else {
+                        const url=URL.createObjectURL(blob);
+                        const a=document.createElement("a");
+                        a.href=url; a.download="romulo-fc-partido.png";
+                        a.click(); URL.revokeObjectURL(url);
+                      }
+                    },"image/png");
+                  };
+                  if(!window.html2canvas) document.head.appendChild(s);
+                  else s.onload();
+                }}>
+                🖼️ Compartir como imagen
+              </button>
+              {/* Contenido capturado */}
+              <div id="detalle-partido-img" style={{ background:"#04060c" }}>
 
               {/* Marcador */}
               <div style={{ textAlign:"center", padding:"12px 0 8px",
@@ -11725,6 +11755,7 @@ export default function App() {
                 )}
               </div>
 
+              </div>
               {/* Botón editar convocados — solo admin/entrenador */}
               {can("partido") && (
                 <button className="btn-sm" style={{ width:"100%", marginBottom:8, fontSize:8.5,
