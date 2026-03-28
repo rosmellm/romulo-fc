@@ -92,6 +92,42 @@ function isDemoSession() {
 }
 
 // Carga jsPDF + html2canvas una sola vez
+// ── Captura elemento como imagen y comparte/descarga ────────────────────────
+async function captureAndShare(elementId, filename = "romulo-fc.png", title = "Rómulo FC") {
+  const el = document.getElementById(elementId);
+  if (!el) return;
+  const doIt = async () => {
+    try {
+      const canvas = await window.html2canvas(el, {
+        backgroundColor:"#04060c", scale:2, useCORS:true, logging:false, allowTaint:true
+      });
+      canvas.toBlob(async blob => {
+        if (!blob) return;
+        const file = new File([blob], filename, { type:"image/png" });
+        try {
+          if (navigator.share && navigator.canShare({ files:[file] })) {
+            await navigator.share({ files:[file], title });
+          } else { throw new Error("no share api"); }
+        } catch {
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url; a.download = filename;
+          document.body.appendChild(a); a.click();
+          document.body.removeChild(a); URL.revokeObjectURL(url);
+        }
+      }, "image/png");
+    } catch(e) { console.warn("captureAndShare error:", e); }
+  };
+  if (window.html2canvas) { doIt(); }
+  else {
+    const s = document.createElement("script");
+    s.src = "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js";
+    s.onload = doIt;
+    s.onerror = () => console.warn("html2canvas no cargó");
+    document.head.appendChild(s);
+  }
+}
+
 function loadPdfLibs() {
   function loadScript(src) {
     return new Promise(res => {
@@ -2062,31 +2098,7 @@ function LiveMatch({ match, myPlayers, sanctions, setSanctions, onClose, onSave,
                 {events.length > 0 && (
                   <button className="btn-sm" style={{ fontSize:8, padding:"3px 8px",
                     background:"rgba(21,101,192,.12)", borderColor:"rgba(33,150,243,.2)", color:"#7ab3e0" }}
-                    onClick={async () => {
-                      const el = document.getElementById("bitacora-live-img");
-                      if (!el) return;
-                      const script = document.createElement("script");
-                      script.src = "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js";
-                      script.onload = async () => {
-                        const canvas = await window.html2canvas(el, {
-                          backgroundColor:"#04060c", scale:2, useCORS:true, logging:false
-                        });
-                        canvas.toBlob(async blob => {
-                          if (!blob) return;
-                          const file = new File([blob],"bitacora-romulo.png",{type:"image/png"});
-                          if (navigator.share && navigator.canShare({files:[file]})) {
-                            await navigator.share({files:[file], title:"Bitácora · Rómulo FC"});
-                          } else {
-                            const url=URL.createObjectURL(blob);
-                            const a=document.createElement("a");
-                            a.href=url; a.download="bitacora-romulo.png";
-                            a.click(); URL.revokeObjectURL(url);
-                          }
-                        },"image/png");
-                      };
-                      if (!window.html2canvas) document.head.appendChild(script);
-                      else script.onload();
-                    }}>
+                    onClick={()=>captureAndShare("bitacora-live-img","bitacora-romulo.png","Bitácora · Rómulo FC")}>
                     🖼️ Compartir
                   </button>
                 )}
@@ -4440,36 +4452,8 @@ export default function App() {
           msg += "\n\n💙 Rómulo F.C";
 
           // Captura de imagen del resumen
-          async function capturarYCompartir() {
-            const el = document.getElementById("resumen-partido-img");
-            if (!el) return;
-            try {
-              // Usar html2canvas si está disponible, sino screenshot API
-              const script = document.createElement("script");
-              script.src = "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js";
-              script.onload = async () => {
-                const canvas = await window.html2canvas(el, {
-                  backgroundColor: "#04060c",
-                  scale: 2,
-                  useCORS: true,
-                  logging: false,
-                });
-                canvas.toBlob(async blob => {
-                  if (!blob) return;
-                  const file = new File([blob], "romulo-fc-resultado.png", { type:"image/png" });
-                  if (navigator.share && navigator.canShare({ files:[file] })) {
-                    await navigator.share({ files:[file], title:"Rómulo FC - Resultado" });
-                  } else {
-                    // Fallback: descargar
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement("a");
-                    a.href = url; a.download = "romulo-fc-resultado.png";
-                    a.click(); URL.revokeObjectURL(url);
-                  }
-                }, "image/png");
-              };
-              document.head.appendChild(script);
-            } catch(e) { console.warn("captura error:", e); }
+          function capturarYCompartir() {
+            captureAndShare("resumen-partido-img","romulo-fc-resultado.png","Rómulo FC - Resultado");
           }
 
           return (
@@ -11643,29 +11627,7 @@ export default function App() {
               {/* Botón compartir como imagen */}
               <button className="btn-sm" style={{ width:"100%", marginBottom:10, fontSize:8.5,
                 background:"rgba(21,101,192,.12)", borderColor:"rgba(33,150,243,.25)", color:"#7ab3e0" }}
-                onClick={async()=>{
-                  const el = document.getElementById("detalle-partido-img");
-                  if(!el) return;
-                  const s = document.createElement("script");
-                  s.src = "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js";
-                  s.onload = async () => {
-                    const canvas = await window.html2canvas(el,{backgroundColor:"#04060c",scale:2,useCORS:true,logging:false});
-                    canvas.toBlob(async blob=>{
-                      if(!blob) return;
-                      const file = new File([blob],"romulo-fc-partido.png",{type:"image/png"});
-                      if(navigator.share && navigator.canShare({files:[file]})){
-                        await navigator.share({files:[file], title:"Rómulo FC — Resultado"});
-                      } else {
-                        const url=URL.createObjectURL(blob);
-                        const a=document.createElement("a");
-                        a.href=url; a.download="romulo-fc-partido.png";
-                        a.click(); URL.revokeObjectURL(url);
-                      }
-                    },"image/png");
-                  };
-                  if(!window.html2canvas) document.head.appendChild(s);
-                  else s.onload();
-                }}>
+                onClick={()=>captureAndShare("detalle-partido-img","romulo-fc-partido.png","Rómulo FC — Resultado")}>
                 🖼️ Compartir como imagen
               </button>
               {/* Contenido capturado */}
